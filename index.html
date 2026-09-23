@@ -177,7 +177,12 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
       </div>
       <div class="panel scroll-x">
         <div id="scheduleGrid" class="empty-hint">เลือกกลุ่มและเดือน แล้วกดสุ่มหมุนเวรอัตโนมัติ</div>
-        <div class="legend"><span><span class="swatch" style="background:#FBFAF6;"></span>เสาร์-อาทิตย์</span><span><span class="swatch" style="background:var(--amber-100);"></span>วันหยุด</span></div>
+        <div class="legend">
+          <span><span class="swatch" style="background:#FBFAF6;"></span>เสาร์-อาทิตย์</span>
+          <span><span class="swatch" style="background:var(--amber-100);"></span>วันหยุด</span>
+          <span><span class="swatch" style="background:#F1EFE9;"></span>· = ช่วงที่ไม่ต้องจัดเวรวันนั้น</span>
+        </div>
+        <p class="auth-sub" style="margin-top:6px;">คลิกที่ช่องของพนักงานเพื่อทำเครื่องหมาย X ว่าอยู่เวรช่วงนั้น (แต่ละช่วงในแต่ละวันมีได้คนเดียว คลิกคนใหม่จะแทนที่คนเดิมอัตโนมัติ) — กลุ่มพนักงานอยู่เวร วันธรรมดาเปิดเฉพาะช่วง1และช่วง3 ส่วนวันเสาร์-อาทิตย์/วันหยุดเปิดครบ 3 ช่วง</p>
       </div>
     </section>
 
@@ -223,12 +228,24 @@ const db = getFirestore(app);
 // ==========================================================================
 const THAI_DOW = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 const DEFAULT_GROUPS = [
-  { name: "พนักงานอยู่เวร ชุดที่ 1", slotsPerDay: 3, order: 1 },
-  { name: "พนักงานอยู่เวร ชุดที่ 2", slotsPerDay: 3, order: 2 },
-  { name: "พนักงานอยู่เวร ชุดที่ 3", slotsPerDay: 3, order: 3 },
-  { name: "ผู้ตรวจเวร", slotsPerDay: 2, order: 4 },
-  { name: "พนักงานสั่งการ", slotsPerDay: 3, order: 5 },
+  { name: "พนักงานอยู่เวร ชุดที่ 1", slotsPerDay: 3, order: 1, isWeekdayVariable: true },
+  { name: "พนักงานอยู่เวร ชุดที่ 2", slotsPerDay: 3, order: 2, isWeekdayVariable: true },
+  { name: "พนักงานอยู่เวร ชุดที่ 3", slotsPerDay: 3, order: 3, isWeekdayVariable: true },
+  { name: "ผู้ตรวจเวร", slotsPerDay: 2, order: 4, isWeekdayVariable: false },
+  { name: "พนักงานสั่งการ", slotsPerDay: 3, order: 5, isWeekdayVariable: false },
 ];
+// กลุ่มที่ isWeekdayVariable = true (พนักงานอยู่เวร 3 ชุด): วันธรรมดามีแค่ ช่วง1 กับ ช่วง3 (ไม่มีช่วง2),
+// วันเสาร์-อาทิตย์และวันหยุดราชการ/วันหยุดพิเศษ มีครบ 3 ช่วง — แต่ละชุดจะดึงคนของตัวเองมาลง 1 คนต่อช่วงที่เปิดในวันนั้น
+// (ทั้ง 3 ชุดรวมกันจึงได้ 3 คนต่อช่วงพอดี คนละ 1 คนจากแต่ละใบ ตามที่ต้องใช้จริง)
+function isDutyRosterGroup(group) {
+  return group.isWeekdayVariable ?? (group.name || "").includes("พนักงานอยู่เวร");
+}
+function activeShiftIndexesForDay(group, dateObj, isHoliday) {
+  if (!isDutyRosterGroup(group)) return Array.from({ length: group.slotsPerDay }, (_, i) => i);
+  const dow = dateObj.getDay();
+  const isWeekendOrHoliday = dow === 0 || dow === 6 || isHoliday;
+  return isWeekendOrHoliday ? [0, 1, 2] : [0, 2]; // index 0=ช่วง1, 1=ช่วง2, 2=ช่วง3
+}
 
 let currentRole = null;
 let currentStaffProfile = null;
@@ -299,16 +316,20 @@ async function removeHoliday(dateStr) { await deleteDoc(doc(db, "holidays", date
 // 5) ตารางเวร
 // ==========================================================================
 function scheduleId(groupId, yyyyMm) { return `${groupId}_${yyyyMm}`; }
-function generateRotation(staffList, slotsPerDay, yyyyMm) {
+function generateRotation(staffList, group, yyyyMm, holidaysMap) {
   const n = staffList.length;
   const days = daysInMonth(yyyyMm);
   const assignments = {};
   if (n === 0) return assignments;
-  const [, m] = yyyyMm.split("-").map(Number);
-  let pointer = (m * slotsPerDay) % n;
+  const [y, m] = yyyyMm.split("-").map(Number);
+  let pointer = m % n;
   for (let day = 1; day <= days; day++) {
-    const slots = [];
-    for (let s = 0; s < slotsPerDay; s++) { slots.push(staffList[pointer % n].id); pointer++; }
+    const dateObj = new Date(y, m - 1, day);
+    const iso = todayISO(y, m, day);
+    const isHoliday = !!holidaysMap[iso];
+    const activeIdx = activeShiftIndexesForDay(group, dateObj, isHoliday);
+    const slots = [null, null, null];
+    activeIdx.forEach((shiftIdx) => { slots[shiftIdx] = staffList[pointer % n].id; pointer++; });
     assignments[String(day)] = slots;
   }
   return assignments;
@@ -451,7 +472,8 @@ async function renderOverview() {
   let rows = "";
   for (const g of allGroups) {
     const staff = await getStaffByGroup(g.id);
-    rows += `<tr><td class="name-cell">${g.name}</td><td>${staff.length} คน</td><td>${g.slotsPerDay} ช่วง/วัน</td></tr>`;
+    const slotLabel = isDutyRosterGroup(g) ? "2-3 ช่วง/วัน (วันธรรมดา 2, วันหยุด/เสาร์-อาทิตย์ 3)" : `${g.slotsPerDay} ช่วง/วัน`;
+    rows += `<tr><td class="name-cell">${g.name}</td><td>${staff.length} คน</td><td>${slotLabel}</td></tr>`;
   }
   box.innerHTML = `<table><thead><tr><th style="text-align:left;">กลุ่มเวร</th><th>จำนวนพนักงาน</th><th>ช่วงเวร/วัน</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -550,7 +572,14 @@ async function renderHolidayList() {
 function onScheduleTabSelect(groupId) {
   activeScheduleGroupId = groupId;
   const g = allGroups.find((x) => x.id === groupId);
-  document.getElementById("slotsPerDayInput").value = g ? g.slotsPerDay : 3;
+  const slotsField = document.getElementById("slotsPerDayInput").closest(".field");
+  const saveBtn = document.getElementById("saveSlotsBtn");
+  if (g && isDutyRosterGroup(g)) {
+    slotsField.classList.add("hidden"); saveBtn.classList.add("hidden");
+  } else {
+    slotsField.classList.remove("hidden"); saveBtn.classList.remove("hidden");
+    document.getElementById("slotsPerDayInput").value = g ? g.slotsPerDay : 3;
+  }
   renderScheduleGrid();
 }
 document.getElementById("scheduleMonthInput").onchange = renderScheduleGrid;
@@ -567,51 +596,95 @@ document.getElementById("generateScheduleBtn").onclick = async () => {
   if (!yyyyMm) { alert("กรุณาเลือกเดือน"); return; }
   const staffList = await getStaffByGroup(activeScheduleGroupId);
   if (!staffList.length) { alert("กลุ่มนี้ยังไม่มีพนักงาน"); return; }
-  const slots = Number(document.getElementById("slotsPerDayInput").value) || 1;
+  const group = allGroups.find((g) => g.id === activeScheduleGroupId);
+  if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
   if (!confirm("การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือก ยืนยันหรือไม่?")) return;
-  const assignments = generateRotation(staffList, slots, yyyyMm);
+  const assignments = generateRotation(staffList, group, yyyyMm, holidaysMap);
   await saveSchedule(activeScheduleGroupId, yyyyMm, assignments);
   renderScheduleGrid();
 };
+// ตารางรูปแบบเดียวกับ PDF ต้นฉบับ: พนักงานเป็นคอลัมน์ (แต่ละคนมี 3 คอลัมน์ย่อย ช่วง1/2/3), วันที่เป็นแถว
+// คลิกที่ช่อง X เพื่อสลับมอบหมาย/ยกเลิกได้ทันที (แต่ละช่วงในแต่ละวันมีคนได้เพียง 1 คนเสมอ)
 async function renderScheduleGrid() {
   const box = document.getElementById("scheduleGrid");
   if (!activeScheduleGroupId) return;
   const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
   const staffList = await getStaffByGroup(activeScheduleGroupId);
+  const group = allGroups.find((g) => g.id === activeScheduleGroupId) || {};
   const assignments = (await loadSchedule(activeScheduleGroupId, yyyyMm)) || {};
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
   if (!staffList.length) { box.innerHTML = `<div class="empty-hint">กลุ่มนี้ยังไม่มีพนักงาน</div>`; return; }
   const numDays = daysInMonth(yyyyMm);
   const [y, m] = yyyyMm.split("-").map(Number);
-  const slots = Number(document.getElementById("slotsPerDayInput").value) || 3;
+  const isDuty = isDutyRosterGroup(group);
+  const fixedSlots = Number(document.getElementById("slotsPerDayInput").value) || group.slotsPerDay || 3;
 
-  let head = `<tr><th>วันที่</th><th>วัน</th>`;
-  for (let s = 0; s < slots; s++) head += `<th>ช่วง ${s + 1}</th>`;
-  head += "</tr>";
+  // แถวหัวตาราง 1: ชื่อพนักงาน (colspan 3), แถวหัวตาราง 2: ช่วง1/ช่วง2/ช่วง3
+  let headRow1 = `<tr><th rowspan="2">วันที่</th><th rowspan="2">วัน</th>`;
+  let headRow2 = "<tr>";
+  staffList.forEach((s) => {
+    headRow1 += `<th colspan="3">${s.name}<br><span style="font-weight:400;font-size:11px;">${s.empId}</span></th>`;
+    headRow2 += `<th>ช่วง1</th><th>ช่วง2</th><th>ช่วง3</th>`;
+  });
+  headRow1 += "</tr>"; headRow2 += "</tr>";
 
   let body = "";
-  const perStaffTotal = {}; staffList.forEach((s) => perStaffTotal[s.id] = 0);
+  const perStaffShiftTotal = {}; // staffId -> [c1,c2,c3]
+  staffList.forEach((s) => perStaffShiftTotal[s.id] = [0, 0, 0]);
+
   for (let d = 1; d <= numDays; d++) {
-    const dow = new Date(y, m - 1, d).getDay();
+    const dateObj = new Date(y, m - 1, d);
+    const dow = dateObj.getDay();
     const iso = todayISO(y, m, d);
     const isWeekend = dow === 0 || dow === 6;
     const isHoliday = !!holidaysMap[iso];
     const rowClass = isHoliday ? "holiday" : (isWeekend ? "weekend" : "");
+    const activeIdx = isDuty
+      ? activeShiftIndexesForDay(group, dateObj, isHoliday)
+      : Array.from({ length: fixedSlots }, (_, i) => i);
+    const daySlots = assignments[String(d)] || [null, null, null];
+
     body += `<tr class="${rowClass}"><td>${d}</td><td>${THAI_DOW[dow]}${isHoliday ? " •" : ""}</td>`;
-    const daySlots = assignments[String(d)] || [];
-    for (let s = 0; s < slots; s++) {
-      const currentVal = daySlots[s] || "";
-      if (currentVal) perStaffTotal[currentVal] = (perStaffTotal[currentVal] || 0) + 1;
-      const options = `<option value="">-</option>` + staffList.map((st) => `<option value="${st.id}" ${st.id === currentVal ? "selected" : ""}>${st.name}</option>`).join("");
-      body += `<td><select class="cell-select" data-day="${d}" data-slot="${s}">${options}</select></td>`;
-    }
+    staffList.forEach((s) => {
+      for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
+        const active = activeIdx.includes(shiftIdx);
+        const isMe = daySlots[shiftIdx] === s.id;
+        if (isMe) perStaffShiftTotal[s.id][shiftIdx]++;
+        if (!active) {
+          body += `<td style="background:#F1EFE9;color:#C7C2B4;">·</td>`;
+        } else {
+          body += `<td><button class="mini-btn cell-toggle" style="width:100%;${isMe ? "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;" : ""}"
+            data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}">${isMe ? "X" : ""}</button></td>`;
+        }
+      }
+    });
     body += "</tr>";
   }
-  let totalsRow = `<tr><td colspan="2" class="name-cell">รวมเวรทั้งเดือน</td><td colspan="${slots}" style="text-align:left;">` +
-    staffList.map((s) => `${s.name}: ${perStaffTotal[s.id] || 0}`).join(" &nbsp;|&nbsp; ") + `</td></tr>`;
-  box.innerHTML = `<table>${head}${body}${totalsRow}</table>`;
-  box.querySelectorAll(".cell-select").forEach((sel) => {
-    sel.onchange = async () => { await updateCell(activeScheduleGroupId, yyyyMm, sel.dataset.day, Number(sel.dataset.slot), sel.value); renderScheduleGrid(); };
+
+  let totalRow1 = `<tr><td colspan="2" class="name-cell">รวมแต่ละช่วง</td>`;
+  staffList.forEach((s) => {
+    const t = perStaffShiftTotal[s.id];
+    totalRow1 += `<td>${t[0]}</td><td>${t[1]}</td><td>${t[2]}</td>`;
+  });
+  totalRow1 += "</tr>";
+  let totalRow2 = `<tr><td colspan="2" class="name-cell">รวมทั้งหมด</td>`;
+  staffList.forEach((s) => {
+    const t = perStaffShiftTotal[s.id];
+    totalRow2 += `<td colspan="3">${t[0] + t[1] + t[2]}</td>`;
+  });
+  totalRow2 += "</tr>";
+
+  box.innerHTML = `<table>${headRow1}${headRow2}${body}${totalRow1}${totalRow2}</table>`;
+  box.querySelectorAll(".cell-toggle").forEach((btn) => {
+    btn.onclick = async () => {
+      const day = btn.dataset.day, shiftIdx = Number(btn.dataset.shift), staffId = btn.dataset.staff;
+      const current = (await loadSchedule(activeScheduleGroupId, yyyyMm)) || {};
+      const daySlots = current[day] ? [...current[day]] : [null, null, null];
+      daySlots[shiftIdx] = daySlots[shiftIdx] === staffId ? null : staffId;
+      current[day] = daySlots;
+      await saveSchedule(activeScheduleGroupId, yyyyMm, current);
+      renderScheduleGrid();
+    };
   });
 }
 
