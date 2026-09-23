@@ -52,13 +52,15 @@ a{color:inherit;}
 .nav-item.active{color:#fff;border-left-color:var(--amber-500);background:rgba(255,255,255,.08);font-weight:600;}
 .sidebar-foot{margin-top:auto;padding:16px 20px 0;border-top:1px solid rgba(255,255,255,.12);}
 .who{font-size:12px;color:#B9C7C3;margin-bottom:10px;}
-.main{flex:1;padding:32px 36px;max-width:1100px;}
+.main{flex:1;padding:32px 36px;width:100%;}
 .view{display:none;}
 .view.active{display:block;}
 .page-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:10px;}
 .page-head p{color:var(--ink-soft);font-size:13px;margin:4px 0 0;}
+
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:20px;}
-.panel h3{font-size:14px;color:var(--teal-900);border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;}
+.panel h3{font-size:14px;text-transform:none;color:var(--teal-900);border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px;}
+
 table{border-collapse:collapse;width:100%;font-size:13px;}
 th,td{border:1px solid var(--line);padding:6px 8px;text-align:center;}
 th{background:var(--amber-100);color:var(--teal-900);font-weight:600;}
@@ -66,6 +68,27 @@ td.name-cell{text-align:left;font-weight:500;}
 tr.weekend td{background:#FBFAF6;}
 tr.holiday td{background:var(--amber-100);}
 .scroll-x{overflow-x:auto;}
+
+/* ---------- schedule grid: sticky columns/header + employee color banding ---------- */
+.sched-scroll{max-height:75vh;overflow:auto;}
+.sched-table{font-size:12.5px;}
+.sched-table th,.sched-table td{border:1px solid #C9C2AC;padding:5px 4px;}
+.sched-table thead th{position:sticky;top:0;z-index:3;background:var(--teal-900);color:#fff;}
+.sched-table td:nth-child(1),.sched-table td:nth-child(2),
+.sched-table th:nth-child(1),.sched-table th:nth-child(2){
+  position:sticky;left:0;background:var(--teal-900);color:#fff;z-index:2;font-weight:700;
+}
+.sched-table td:nth-child(2),.sched-table th:nth-child(2){left:38px;}
+.sched-table tr.weekend td:nth-child(1),.sched-table tr.weekend td:nth-child(2){background:#12554E;}
+.sched-table tr.holiday td:nth-child(1),.sched-table tr.holiday td:nth-child(2){background:#8A5B18;}
+.emp-a{background:#FFFFFF;}
+.emp-b{background:#EFEAD9;}
+.emp-border-end{border-right:3px solid var(--teal-900) !important;}
+.sched-table tr.weekend .emp-a{background:#FBFAF3;}
+.sched-table tr.weekend .emp-b{background:#F1EBD5;}
+.sched-table tr.holiday .emp-a{background:#FBEFD5;}
+.sched-table tr.holiday .emp-b{background:#F5E3B8;}
+
 .row-flex{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
 .grow{flex:1;min-width:160px;}
 .tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:10px;background:var(--amber-100);color:var(--teal-900);margin-left:6px;}
@@ -84,14 +107,28 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .cal-table{table-layout:fixed;}
 .cal-table th{background:var(--teal-900);color:#fff;padding:8px 4px;}
 .cal-table td{vertical-align:top;padding:0;height:1px;}
-.cal-day{padding:4px 6px;}
-.cal-daynum{font-weight:700;text-align:center;padding:4px 0;background:var(--amber-100);color:var(--teal-900);}
-.cal-daynum.sat{background:#DCEAF5;}
+.cal-day{padding:4px 6px;min-height:90px;}
+.cal-daynum{font-weight:700;text-align:center;padding:4px 0;background:#EFEAE0;color:var(--ink);}
+.cal-daynum.sat{background:#CFE3F2;color:var(--teal-900);}
+.cal-daynum.sun{background:#F3D2CB;color:#8A3324;}
+.cal-day.is-holiday{background:var(--amber-100);}
+.cal-day.is-holiday .cal-daynum{background:var(--amber-500);color:#fff;}
 .cal-daynum.today{outline:2px solid var(--teal-500);outline-offset:-2px;}
 .cal-empty{background:#8C8C8C;}
 .cal-shift-row{font-size:11.5px;text-align:center;padding:3px 4px;border-top:1px dashed var(--line);white-space:normal;word-break:break-word;}
 .cal-shift-row.dash{color:var(--ink-soft);}
-.cal-week-alt .cal-day{background:#FBFAF6;}
+.cal-holiday-name{font-size:10px;color:#8A5B18;text-align:center;padding:1px 3px 3px;font-weight:600;}
+
+/* ---------- print ---------- */
+@media print{
+  .sidebar,.no-print{display:none !important;}
+  .main{padding:0;width:100%;}
+  .shell{display:block;}
+  .panel{border:none;padding:0;margin-bottom:14px;}
+  .sched-scroll{max-height:none;overflow:visible;}
+  .sched-table thead th,.sched-table td:nth-child(1),.sched-table td:nth-child(2),.sched-table th:nth-child(1),.sched-table th:nth-child(2){position:static;}
+  table{font-size:11px;}
+}
 </style>
 </head>
 <body>
@@ -146,7 +183,12 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 
     <section class="view" id="view-calendar">
       <div class="page-head"><div><h2>ปฏิทินเวร</h2><p>รวมเวรพนักงานอยู่เวรทั้ง 3 ชุดต่อวัน แสดงเป็นชื่อเล่น ดูง่ายแบบปฏิทิน</p></div></div>
-      <div class="panel"><div class="field" style="max-width:220px;"><label>เดือน</label><input type="month" id="calendarMonthInput"></div></div>
+      <div class="panel no-print">
+        <div class="row-flex">
+          <div class="field" style="max-width:220px;"><label>เดือน</label><input type="month" id="calendarMonthInput"></div>
+          <button class="btn btn-ghost" id="printCalendarBtn" style="height:38px;">🖨️ พิมพ์ / บันทึก PDF</button>
+        </div>
+      </div>
       <div class="panel scroll-x"><div id="calendarBox" class="empty-hint">เลือกเดือนเพื่อดูปฏิทินเวร</div></div>
     </section>
 
@@ -166,7 +208,7 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
     </section>
 
     <section class="view" id="view-holidays">
-      <div class="page-head"><div><h2>ปฏิทิน / วันหยุด</h2><p>ดึงวันหยุดราชการไทยอัตโนมัติ และเพิ่มวันหยุดพิเศษได้</p></div></div>
+      <div class="page-head"><div><h2>ปฏิทิน / วันหยุด</h2><p>เพิ่มวันหยุดราชการไทยของแต่ละปีอัตโนมัติ (คำนวณในเครื่อง ไม่พึ่ง API ภายนอก) และเพิ่มวันหยุดพิเศษเองได้</p></div></div>
       <div class="panel">
         <div class="row-flex">
           <div class="field"><label>ปี (พ.ศ.)</label><input type="number" id="holidayYearInput" style="width:110px;"></div>
@@ -186,24 +228,28 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 
     <section class="view" id="view-schedule">
       <div class="page-head"><div><h2>จัดตารางเวร</h2><p>สุ่มหมุนเวียนอัตโนมัติ แล้วแก้ไขทีละช่องได้</p></div></div>
-      <div class="group-tabs" id="scheduleGroupTabs"></div>
-      <div class="panel">
+      <div class="group-tabs no-print" id="scheduleGroupTabs"></div>
+      <div class="panel no-print">
         <div class="row-flex">
           <div class="field"><label>เดือน</label><input type="month" id="scheduleMonthInput"></div>
           <div class="field"><label>จำนวนช่วงเวร/วัน</label><input type="number" id="slotsPerDayInput" min="1" max="6" style="width:90px;"></div>
           <button class="btn btn-ghost btn-small" id="saveSlotsBtn" style="height:38px;">บันทึกค่านี้</button>
           <button class="btn btn-primary" id="generateScheduleBtn" style="height:38px;">🔄 สุ่มหมุนเวรอัตโนมัติ</button>
+          <button class="btn btn-ghost" id="printScheduleBtn" style="height:38px;">🖨️ พิมพ์ / บันทึก PDF</button>
         </div>
         <p class="auth-sub" style="margin-top:8px;">การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือกทั้งหมด ควรทำก่อนแก้ไขมือ</p>
       </div>
-      <div class="panel scroll-x">
-        <div id="scheduleGrid" class="empty-hint">เลือกกลุ่มและเดือน แล้วกดสุ่มหมุนเวรอัตโนมัติ</div>
-        <div class="legend">
-          <span><span class="swatch" style="background:#FBFAF6;"></span>เสาร์-อาทิตย์</span>
-          <span><span class="swatch" style="background:var(--amber-100);"></span>วันหยุด</span>
+      <div class="panel" id="scheduleGridPanel">
+        <div class="sched-scroll">
+          <div id="scheduleGrid" class="empty-hint">เลือกกลุ่มและเดือน แล้วกดสุ่มหมุนเวรอัตโนมัติ</div>
+        </div>
+        <div class="legend no-print">
+          <span><span class="swatch" style="background:#12554E;"></span>เสาร์-อาทิตย์</span>
+          <span><span class="swatch" style="background:#8A5B18;"></span>วันหยุด</span>
+          <span><span class="swatch" style="background:#EFEAD9;"></span>สลับสีตามพนักงานแต่ละคน</span>
           <span><span class="swatch" style="background:#F1EFE9;"></span>· = ช่วงที่ไม่ต้องจัดเวรวันนั้น</span>
         </div>
-        <p class="auth-sub" style="margin-top:6px;">คลิกที่ช่องของพนักงานเพื่อทำเครื่องหมาย X ว่าอยู่เวรช่วงนั้น (แต่ละช่วงในแต่ละวันมีได้คนเดียว คลิกคนใหม่จะแทนที่คนเดิมอัตโนมัติ) — กลุ่มพนักงานอยู่เวร วันธรรมดาเปิดเฉพาะช่วง1และช่วง3 ส่วนวันเสาร์-อาทิตย์/วันหยุดเปิดครบ 3 ช่วง</p>
+        <p class="auth-sub no-print" style="margin-top:6px;">คลิกที่ช่องของพนักงานเพื่อทำเครื่องหมาย X ว่าอยู่เวรช่วงนั้น (แต่ละช่วงในแต่ละวันมีได้คนเดียว คลิกคนใหม่จะแทนที่คนเดิมอัตโนมัติ) — กลุ่มพนักงานอยู่เวร วันธรรมดาเปิดเฉพาะช่วง1และช่วง3 ส่วนวันเสาร์-อาทิตย์/วันหยุดเปิดครบ 3 ช่วง คอลัมน์วันที่/วันจะติดอยู่ด้านซ้ายเสมอตอนเลื่อนดู</p>
       </div>
     </section>
 
@@ -230,7 +276,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDnhKGBnLpTIaOAvlBhyBcdgA1kH_-Cd1w",
+apiKey: "AIzaSyDnhKGBnLpTIaOAvlBhyBcdgA1kH_-Cd1w",
   authDomain: "van-betong.firebaseapp.com",
   projectId: "van-betong",
   storageBucket: "van-betong.firebasestorage.app",
@@ -322,14 +368,57 @@ async function moveStaff(groupId, staffId, direction) {
 async function updateGroupSlots(groupId, slotsPerDay) { await updateDoc(doc(db, "groups", groupId), { slotsPerDay }); }
 
 // ==========================================================================
-// 4) วันหยุด
-// ==========================================================================
-async function fetchPublicHolidays(gregorianYear) {
-  const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${gregorianYear}/TH`);
-  if (!res.ok) throw new Error("โหลดวันหยุดราชการไม่สำเร็จ");
-  const data = await res.json();
-  await Promise.all(data.map((h) => setDoc(doc(db, "holidays", h.date), { name: h.localName || h.name, custom: false }, { merge: true })));
-  return data.length;
+// 4) วันหยุด — คำนวณเองในเครื่อง ไม่พึ่ง API ภายนอก (กันปัญหาโหลดไม่สำเร็จ)
+// วันหยุดที่มีวันที่ตายตัวคำนวณได้ทุกปี ส่วนวันหยุดพระพุทธศาสนา/วันหยุดพิเศษที่ประกาศเพิ่มเติมรายปี
+// (ขึ้นอยู่กับปฏิทินจันทรคติ + มติ ครม.) ใส่ไว้ให้เท่าที่มีข้อมูลยืนยันแล้ว ปีอื่นๆ เพิ่มเองได้จากช่อง "เพิ่มวันหยุดพิเศษ"
+const FIXED_HOLIDAYS_MMDD = [
+  ["01-01", "วันขึ้นปีใหม่"],
+  ["04-06", "วันจักรี"],
+  ["04-13", "วันสงกรานต์"],
+  ["04-14", "วันสงกรานต์"],
+  ["04-15", "วันสงกรานต์"],
+  ["05-01", "วันแรงงานแห่งชาติ"],
+  ["05-04", "วันฉัตรมงคล"],
+  ["06-03", "วันเฉลิมพระชนมพรรษาสมเด็จพระนางเจ้าสุทิดาฯ"],
+  ["07-28", "วันเฉลิมพระชนมพรรษา ร.10"],
+  ["08-12", "วันแม่แห่งชาติ"],
+  ["10-13", "วันนวมินทรมหาราช"],
+  ["10-23", "วันปิยมหาราช"],
+  ["12-05", "วันพ่อแห่งชาติ"],
+  ["12-10", "วันรัฐธรรมนูญ"],
+  ["12-31", "วันสิ้นปี"],
+];
+// คีย์เป็น พ.ศ. (ปีที่กรอกในหน้าจอ) — วันหยุดจันทรคติ+วันหยุดพิเศษ/ชดเชยที่ประกาศแล้วของแต่ละปี
+const MOVABLE_HOLIDAYS_BY_BUDDHIST_YEAR = {
+  2568: [
+    ["02-12", "วันมาฆบูชา"],
+    ["04-16", "ชดเชยวันสงกรานต์"],
+    ["05-05", "ชดเชยวันฉัตรมงคล"],
+    ["05-11", "วันวิสาขบูชา"],
+    ["07-10", "วันอาสาฬหบูชา"],
+    ["07-11", "วันเข้าพรรษา"],
+  ],
+  2569: [
+    ["01-02", "วันหยุดพิเศษ (มติ ครม.)"],
+    ["03-03", "วันมาฆบูชา"],
+    ["05-11", "วันพืชมงคล"],
+    ["05-31", "วันวิสาขบูชา"],
+    ["06-01", "ชดเชยวันวิสาขบูชา"],
+    ["07-29", "วันอาสาฬหบูชา"],
+    ["07-30", "วันเข้าพรรษา"],
+    ["12-07", "ชดเชยวันพ่อแห่งชาติ"],
+  ],
+};
+function generateThaiHolidays(gregorianYear, buddhistYear) {
+  const list = FIXED_HOLIDAYS_MMDD.map(([mmdd, name]) => ({ date: `${gregorianYear}-${mmdd}`, name }));
+  const movable = MOVABLE_HOLIDAYS_BY_BUDDHIST_YEAR[buddhistYear] || [];
+  movable.forEach(([mmdd, name]) => list.push({ date: `${gregorianYear}-${mmdd}`, name }));
+  return list;
+}
+async function loadThaiHolidaysForYear(gregorianYear, buddhistYear) {
+  const holidays = generateThaiHolidays(gregorianYear, buddhistYear);
+  await Promise.all(holidays.map((h) => setDoc(doc(db, "holidays", h.date), { name: h.name, custom: false }, { merge: true })));
+  return { count: holidays.length, hasMovableData: !!MOVABLE_HOLIDAYS_BY_BUDDHIST_YEAR[buddhistYear] };
 }
 async function getAllHolidays() {
   const snap = await getDocs(collection(db, "holidays"));
@@ -571,8 +660,15 @@ document.getElementById("loadHolidaysBtn").onclick = async () => {
   const gYear = buddhistYear - 543;
   const btn = document.getElementById("loadHolidaysBtn");
   btn.textContent = "กำลังโหลด..."; btn.disabled = true;
-  try { const count = await fetchPublicHolidays(gYear); alert(`โหลดวันหยุดราชการสำเร็จ ${count} วัน`); renderHolidayList(); }
-  catch (e) { alert("โหลดไม่สำเร็จ: " + e.message); }
+  try {
+    const { count, hasMovableData } = await loadThaiHolidaysForYear(gYear, buddhistYear);
+    if (hasMovableData) {
+      alert(`เพิ่มวันหยุดราชการปี ${buddhistYear} สำเร็จ ${count} วัน (รวมวันหยุดพระพุทธศาสนาที่ยืนยันแล้ว)`);
+    } else {
+      alert(`เพิ่มวันหยุดที่มีวันที่ตายตัวของปี ${buddhistYear} แล้ว ${count} วัน\n\nปีนี้ยังไม่มีข้อมูลวันหยุดพระพุทธศาสนา (มาฆบูชา/วิสาขบูชา/อาสาฬหบูชา ฯลฯ) และวันหยุดพิเศษที่ประกาศเพิ่มเติมในระบบ กรุณาเพิ่มเองด้านล่างเมื่อทราบวันที่แน่นอนจากประกาศราชการ`);
+    }
+    renderHolidayList();
+  } catch (e) { alert("เกิดข้อผิดพลาด: " + e.message); }
   btn.textContent = "โหลดวันหยุดราชการ"; btn.disabled = false;
 };
 document.getElementById("addHolidayBtn").onclick = async () => {
@@ -618,6 +714,7 @@ function onScheduleTabSelect(groupId) {
   renderScheduleGrid();
 }
 document.getElementById("scheduleMonthInput").onchange = renderScheduleGrid;
+document.getElementById("printScheduleBtn").onclick = () => window.print();
 document.getElementById("saveSlotsBtn").onclick = async () => {
   if (!activeScheduleGroupId) return;
   const slots = Number(document.getElementById("slotsPerDayInput").value) || 1;
@@ -654,12 +751,13 @@ async function renderScheduleGrid() {
   const isDuty = isDutyRosterGroup(group);
   const fixedSlots = Number(document.getElementById("slotsPerDayInput").value) || group.slotsPerDay || 3;
 
-  // แถวหัวตาราง 1: ชื่อพนักงาน (colspan 3), แถวหัวตาราง 2: ช่วง1/ช่วง2/ช่วง3
+  // แถวหัวตาราง 1: ชื่อพนักงาน (colspan 3), แถวหัวตาราง 2: ช่วง1/ช่วง2/ช่วง3 — สลับสีพื้นหลังตามพนักงานแต่ละคนให้แยกกลุ่มชัดเจน
   let headRow1 = `<tr><th rowspan="2">วันที่</th><th rowspan="2">วัน</th>`;
   let headRow2 = "<tr>";
-  staffList.forEach((s) => {
-    headRow1 += `<th colspan="3">${s.name}<br><span style="font-weight:400;font-size:11px;">${s.empId}</span></th>`;
-    headRow2 += `<th>ช่วง1</th><th>ช่วง2</th><th>ช่วง3</th>`;
+  staffList.forEach((s, i) => {
+    const band = i % 2 === 0 ? "emp-a" : "emp-b";
+    headRow1 += `<th colspan="3" class="${band} emp-border-end">${s.name}<br><span style="font-weight:400;font-size:11px;">${s.empId}</span></th>`;
+    headRow2 += `<th class="${band}">ช่วง1</th><th class="${band}">ช่วง2</th><th class="${band} emp-border-end">ช่วง3</th>`;
   });
   headRow1 += "</tr>"; headRow2 += "</tr>";
 
@@ -680,15 +778,17 @@ async function renderScheduleGrid() {
     const daySlots = assignments[String(d)] || [null, null, null];
 
     body += `<tr class="${rowClass}"><td>${d}</td><td>${THAI_DOW[dow]}${isHoliday ? " •" : ""}</td>`;
-    staffList.forEach((s) => {
+    staffList.forEach((s, i) => {
+      const band = i % 2 === 0 ? "emp-a" : "emp-b";
       for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
         const active = activeIdx.includes(shiftIdx);
         const isMe = daySlots[shiftIdx] === s.id;
+        const borderClass = shiftIdx === 2 ? " emp-border-end" : "";
         if (isMe) perStaffShiftTotal[s.id][shiftIdx]++;
         if (!active) {
-          body += `<td style="background:#F1EFE9;color:#C7C2B4;">·</td>`;
+          body += `<td class="${band}${borderClass}" style="color:#C7C2B4;">·</td>`;
         } else {
-          body += `<td><button class="mini-btn cell-toggle" style="width:100%;${isMe ? "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;" : ""}"
+          body += `<td class="${band}${borderClass}"><button class="mini-btn cell-toggle" style="width:100%;${isMe ? "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;" : ""}"
             data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}">${isMe ? "X" : ""}</button></td>`;
         }
       }
@@ -697,19 +797,21 @@ async function renderScheduleGrid() {
   }
 
   let totalRow1 = `<tr><td colspan="2" class="name-cell">รวมแต่ละช่วง</td>`;
-  staffList.forEach((s) => {
+  staffList.forEach((s, i) => {
+    const band = i % 2 === 0 ? "emp-a" : "emp-b";
     const t = perStaffShiftTotal[s.id];
-    totalRow1 += `<td>${t[0]}</td><td>${t[1]}</td><td>${t[2]}</td>`;
+    totalRow1 += `<td class="${band}">${t[0]}</td><td class="${band}">${t[1]}</td><td class="${band} emp-border-end">${t[2]}</td>`;
   });
   totalRow1 += "</tr>";
   let totalRow2 = `<tr><td colspan="2" class="name-cell">รวมทั้งหมด</td>`;
-  staffList.forEach((s) => {
+  staffList.forEach((s, i) => {
+    const band = i % 2 === 0 ? "emp-a" : "emp-b";
     const t = perStaffShiftTotal[s.id];
-    totalRow2 += `<td colspan="3">${t[0] + t[1] + t[2]}</td>`;
+    totalRow2 += `<td colspan="3" class="${band} emp-border-end">${t[0] + t[1] + t[2]}</td>`;
   });
   totalRow2 += "</tr>";
 
-  box.innerHTML = `<table>${headRow1}${headRow2}${body}${totalRow1}${totalRow2}</table>`;
+  box.innerHTML = `<table class="sched-table">${headRow1}${headRow2}${body}${totalRow1}${totalRow2}</table>`;
   box.querySelectorAll(".cell-toggle").forEach((btn) => {
     btn.onclick = async () => {
       const day = btn.dataset.day, shiftIdx = Number(btn.dataset.shift), staffId = btn.dataset.staff;
@@ -728,6 +830,7 @@ async function renderScheduleGrid() {
 // ==========================================================================
 document.getElementById("myScheduleMonthInput").onchange = renderMySchedule;
 document.getElementById("calendarMonthInput").onchange = renderCalendar;
+document.getElementById("printCalendarBtn").onclick = () => window.print();
 
 function isDutyShiftActive(shiftIdx, dow, isHoliday) {
   if (dow === 0 || dow === 6 || isHoliday) return true;
@@ -777,6 +880,7 @@ async function renderCalendar() {
       const dow = dateObj.getDay();
       const iso = todayISO(y, m, d);
       const isHoliday = !!holidaysMap[iso];
+      const dayNumClass = dow === 6 ? " sat" : (dow === 0 ? " sun" : "");
       let rows = "";
       for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
         const active = isDutyShiftActive(shiftIdx, dow, isHoliday);
@@ -788,8 +892,9 @@ async function renderCalendar() {
         rows += `<div class="cal-shift-row">${names.length ? names.join(" ") : "-"}</div>`;
       }
       body += `<td>
-        <div class="cal-day">
-          <div class="cal-daynum${dow === 6 ? " sat" : ""}${iso === todayStr ? " today" : ""}">${d}</div>
+        <div class="cal-day${isHoliday ? " is-holiday" : ""}" ${isHoliday ? `title="${holidaysMap[iso]}"` : ""}>
+          <div class="cal-daynum${dayNumClass}${iso === todayStr ? " today" : ""}">${d}</div>
+          ${isHoliday ? `<div class="cal-holiday-name">${holidaysMap[iso]}</div>` : ""}
           ${rows}
         </div>
       </td>`;
