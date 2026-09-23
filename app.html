@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ระบบจัดเวร กฟภ.</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="shell">
+    <nav class="sidebar">
+      <div class="brand">
+        <div class="brand-title">ระบบจัดเวร กฟภ.</div>
+        <div class="brand-sub">แก้ไขกระแสไฟฟ้าขัดข้อง</div>
+      </div>
+      <div class="nav-item active" data-view="overview">ภาพรวม</div>
+      <div class="nav-item admin-only" data-view="staff">จัดการพนักงาน</div>
+      <div class="nav-item admin-only" data-view="holidays">ปฏิทิน / วันหยุด</div>
+      <div class="nav-item admin-only" data-view="schedule">จัดตารางเวร</div>
+      <div class="nav-item staff-only" data-view="myschedule">ตารางเวรของฉัน</div>
+      <div class="sidebar-foot">
+        <div class="who" id="whoBox">กำลังโหลด...</div>
+        <button class="btn btn-ghost btn-small" id="logoutBtn" style="width:100%;">ออกจากระบบ</button>
+      </div>
+    </nav>
+
+    <main class="main">
+
+      <section class="view active" id="view-overview">
+        <div class="page-head"><div><h2>ภาพรวม</h2><p>สรุปข้อมูลเวรประจำเดือน</p></div></div>
+        <div class="panel" id="overviewPanel">กำลังโหลดข้อมูล...</div>
+      </section>
+
+      <section class="view" id="view-staff">
+        <div class="page-head"><div><h2>จัดการพนักงาน</h2><p>เพิ่ม / ลบ / เลื่อนลำดับพนักงานแต่ละกลุ่มเวร</p></div></div>
+        <div class="group-tabs" id="staffGroupTabs"></div>
+        <div class="panel">
+          <h3>เพิ่มพนักงานในกลุ่มนี้</h3>
+          <div class="row-flex">
+            <div class="field grow"><label>ชื่อ-สกุล</label><input type="text" id="newStaffName"></div>
+            <div class="field grow"><label>รหัสพนักงาน</label><input type="text" id="newStaffEmpId"></div>
+            <button class="btn btn-primary" id="addStaffBtn" style="height:38px;">+ เพิ่มพนักงาน</button>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>รายชื่อพนักงานในกลุ่ม (ลำดับมีผลต่อการหมุนเวรอัตโนมัติ)</h3>
+          <div id="staffListBox"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-holidays">
+        <div class="page-head"><div><h2>ปฏิทิน / วันหยุด</h2><p>ดึงวันหยุดราชการไทยอัตโนมัติ และเพิ่มวันหยุดพิเศษได้</p></div></div>
+        <div class="panel">
+          <div class="row-flex">
+            <div class="field"><label>ปี (พ.ศ.)</label><input type="number" id="holidayYearInput" style="width:110px;"></div>
+            <button class="btn btn-ghost" id="loadHolidaysBtn" style="height:38px;">โหลดวันหยุดราชการ</button>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>เพิ่มวันหยุดพิเศษของหน่วยงาน</h3>
+          <div class="row-flex">
+            <div class="field"><label>วันที่</label><input type="date" id="customHolidayDate"></div>
+            <div class="field grow"><label>ชื่อวันหยุด</label><input type="text" id="customHolidayName"></div>
+            <button class="btn btn-primary" id="addHolidayBtn" style="height:38px;">+ เพิ่ม</button>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>รายการวันหยุดทั้งหมด</h3>
+          <div id="holidayListBox"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-schedule">
+        <div class="page-head"><div><h2>จัดตารางเวร</h2><p>สุ่มหมุนเวียนอัตโนมัติ แล้วแก้ไขทีละช่องได้</p></div></div>
+        <div class="group-tabs" id="scheduleGroupTabs"></div>
+        <div class="panel">
+          <div class="row-flex">
+            <div class="field"><label>เดือน</label><input type="month" id="scheduleMonthInput"></div>
+            <div class="field"><label>จำนวนช่วงเวร/วัน</label><input type="number" id="slotsPerDayInput" min="1" max="6" style="width:90px;"></div>
+            <button class="btn btn-ghost btn-small" id="saveSlotsBtn" style="height:38px;">บันทึกค่านี้</button>
+            <button class="btn btn-primary" id="generateScheduleBtn" style="height:38px;">🔄 สุ่มหมุนเวรอัตโนมัติ</button>
+          </div>
+          <p class="auth-sub" style="margin-top:8px;">การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือกทั้งหมด ควรทำก่อนแก้ไขมือ</p>
+        </div>
+        <div class="panel scroll-x">
+          <div id="scheduleGrid" class="empty-hint">เลือกกลุ่มและเดือน แล้วกดสุ่มหมุนเวรอัตโนมัติ</div>
+          <div class="legend">
+            <span><span class="swatch" style="background:#FBFAF6;"></span>เสาร์-อาทิตย์</span>
+            <span><span class="swatch" style="background:var(--amber-100);"></span>วันหยุด</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-myschedule">
+        <div class="page-head"><div><h2>ตารางเวรของฉัน</h2><p>รายการเวรที่คุณได้รับมอบหมาย</p></div></div>
+        <div class="panel">
+          <div class="field" style="max-width:220px;"><label>เดือน</label><input type="month" id="myScheduleMonthInput"></div>
+        </div>
+        <div class="panel scroll-x">
+          <div id="myScheduleBox" class="empty-hint">เลือกเดือนเพื่อดูตารางเวร</div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script type="module" src="js/firebase-config.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
