@@ -79,6 +79,19 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .legend{font-size:12px;color:var(--ink-soft);margin-top:10px;}
 .legend span{display:inline-flex;align-items:center;gap:4px;margin-right:14px;}
 .swatch{width:10px;height:10px;display:inline-block;border:1px solid var(--line);}
+
+/* ---------- month calendar ---------- */
+.cal-table{table-layout:fixed;}
+.cal-table th{background:var(--teal-900);color:#fff;padding:8px 4px;}
+.cal-table td{vertical-align:top;padding:0;height:1px;}
+.cal-day{padding:4px 6px;}
+.cal-daynum{font-weight:700;text-align:center;padding:4px 0;background:var(--amber-100);color:var(--teal-900);}
+.cal-daynum.sat{background:#DCEAF5;}
+.cal-daynum.today{outline:2px solid var(--teal-500);outline-offset:-2px;}
+.cal-empty{background:#8C8C8C;}
+.cal-shift-row{font-size:11.5px;text-align:center;padding:3px 4px;border-top:1px dashed var(--line);white-space:normal;word-break:break-word;}
+.cal-shift-row.dash{color:var(--ink-soft);}
+.cal-week-alt .cal-day{background:#FBFAF6;}
 </style>
 </head>
 <body>
@@ -114,7 +127,8 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 <div class="shell hidden" id="appScreen">
   <nav class="sidebar">
     <div class="brand"><div class="brand-title">ระบบจัดเวร กฟภ.</div><div class="brand-sub">แก้ไขกระแสไฟฟ้าขัดข้อง</div></div>
-    <div class="nav-item active" data-view="overview">ภาพรวม</div>
+    <div class="nav-item" data-view="overview">ภาพรวม</div>
+    <div class="nav-item" data-view="calendar">ปฏิทินเวร</div>
     <div class="nav-item admin-only" data-view="staff">จัดการพนักงาน</div>
     <div class="nav-item admin-only" data-view="holidays">ปฏิทิน / วันหยุด</div>
     <div class="nav-item admin-only" data-view="schedule">จัดตารางเวร</div>
@@ -130,6 +144,12 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
       <div class="panel" id="overviewPanel">กำลังโหลดข้อมูล...</div>
     </section>
 
+    <section class="view" id="view-calendar">
+      <div class="page-head"><div><h2>ปฏิทินเวร</h2><p>รวมเวรพนักงานอยู่เวรทั้ง 3 ชุดต่อวัน แสดงเป็นชื่อเล่น ดูง่ายแบบปฏิทิน</p></div></div>
+      <div class="panel"><div class="field" style="max-width:220px;"><label>เดือน</label><input type="month" id="calendarMonthInput"></div></div>
+      <div class="panel scroll-x"><div id="calendarBox" class="empty-hint">เลือกเดือนเพื่อดูปฏิทินเวร</div></div>
+    </section>
+
     <section class="view" id="view-staff">
       <div class="page-head"><div><h2>จัดการพนักงาน</h2><p>เพิ่ม / ลบ / เลื่อนลำดับพนักงานแต่ละกลุ่มเวร</p></div></div>
       <div class="group-tabs" id="staffGroupTabs"></div>
@@ -137,6 +157,7 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
         <h3>เพิ่มพนักงานในกลุ่มนี้</h3>
         <div class="row-flex">
           <div class="field grow"><label>ชื่อ-สกุล</label><input type="text" id="newStaffName"></div>
+          <div class="field grow"><label>ชื่อเล่น (แสดงในปฏิทินเวร)</label><input type="text" id="newStaffNickname"></div>
           <div class="field grow"><label>รหัสพนักงาน</label><input type="text" id="newStaffEmpId"></div>
           <button class="btn btn-primary" id="addStaffBtn" style="height:38px;">+ เพิ่มพนักงาน</button>
         </div>
@@ -276,11 +297,16 @@ async function getStaffByGroup(groupId) {
   const snap = await getDocs(query(collection(db, "staff"), where("groupId", "==", groupId)));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
-async function addStaff(groupId, name, empId) {
+async function addStaff(groupId, name, empId, nickname) {
   const existing = await getStaffByGroup(groupId);
   const maxOrder = existing.reduce((m, s) => Math.max(m, s.order ?? 0), 0);
-  await addDoc(collection(db, "staff"), { name, empId, groupId, order: maxOrder + 1, linkedUid: null });
+  await addDoc(collection(db, "staff"), { name, empId, groupId, order: maxOrder + 1, linkedUid: null, nickname: nickname || "" });
 }
+async function getAllStaff() {
+  const snap = await getDocs(collection(db, "staff"));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+async function updateStaffField(staffId, field, value) { await updateDoc(doc(db, "staff", staffId), { [field]: value }); }
 async function removeStaff(staffId) { await deleteDoc(doc(db, "staff", staffId)); }
 async function moveStaff(groupId, staffId, direction) {
   const list = await getStaffByGroup(groupId);
@@ -417,6 +443,7 @@ function switchView(name) {
   document.querySelectorAll(".nav-item").forEach((i) => i.classList.toggle("active", i.dataset.view === name));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   if (name === "overview") renderOverview();
+  if (name === "calendar") renderCalendar();
   if (name === "holidays") renderHolidayList();
   if (name === "myschedule") renderMySchedule();
 }
@@ -461,6 +488,7 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById("holidayYearInput").value = new Date().getFullYear() + 543;
   document.getElementById("scheduleMonthInput").value = currentYyyyMm();
   document.getElementById("myScheduleMonthInput").value = currentYyyyMm();
+  document.getElementById("calendarMonthInput").value = currentYyyyMm();
 });
 
 // ==========================================================================
@@ -499,9 +527,11 @@ async function renderStaffList() {
   if (!activeStaffGroupId) return;
   const list = await getStaffByGroup(activeStaffGroupId);
   if (!list.length) { box.innerHTML = `<div class="empty-hint">ยังไม่มีพนักงานในกลุ่มนี้</div>`; return; }
-  let html = `<table><thead><tr><th style="text-align:left;">ลำดับ</th><th style="text-align:left;">ชื่อ-สกุล</th><th>รหัสพนักงาน</th><th>สถานะบัญชี</th><th>จัดการ</th></tr></thead><tbody>`;
+  let html = `<table><thead><tr><th style="text-align:left;">ลำดับ</th><th style="text-align:left;">ชื่อ-สกุล</th><th>ชื่อเล่น</th><th>รหัสพนักงาน</th><th>สถานะบัญชี</th><th>จัดการ</th></tr></thead><tbody>`;
   list.forEach((s, idx) => {
-    html += `<tr><td>${idx + 1}</td><td class="name-cell">${s.name}</td><td>${s.empId}</td>
+    html += `<tr><td>${idx + 1}</td><td class="name-cell">${s.name}</td>
+      <td><input type="text" class="nickname-input" data-id="${s.id}" value="${s.nickname || ""}" placeholder="ใส่ชื่อเล่น" style="width:100px;padding:4px 6px;border:1px solid var(--line);border-radius:2px;font-family:inherit;"></td>
+      <td>${s.empId}</td>
       <td>${s.linkedUid ? '<span class="tag">สมัครแล้ว</span>' : '<span class="tag" style="background:#F7E3DE;">ยังไม่สมัคร</span>'}</td>
       <td><button class="mini-btn" data-act="up" data-id="${s.id}">▲</button>
       <button class="mini-btn" data-act="down" data-id="${s.id}">▼</button>
@@ -509,6 +539,9 @@ async function renderStaffList() {
   });
   html += "</tbody></table>";
   box.innerHTML = html;
+  box.querySelectorAll(".nickname-input").forEach((inp) => {
+    inp.onchange = async () => { await updateStaffField(inp.dataset.id, "nickname", inp.value.trim()); };
+  });
   box.querySelectorAll(".mini-btn").forEach((btn) => {
     btn.onclick = async () => {
       const id = btn.dataset.id, act = btn.dataset.act;
@@ -520,10 +553,12 @@ async function renderStaffList() {
 }
 document.getElementById("addStaffBtn").onclick = async () => {
   const name = document.getElementById("newStaffName").value.trim();
+  const nickname = document.getElementById("newStaffNickname").value.trim();
   const empId = document.getElementById("newStaffEmpId").value.trim();
   if (!name || !empId || !activeStaffGroupId) return;
-  await addStaff(activeStaffGroupId, name, empId);
+  await addStaff(activeStaffGroupId, name, empId, nickname);
   document.getElementById("newStaffName").value = "";
+  document.getElementById("newStaffNickname").value = "";
   document.getElementById("newStaffEmpId").value = "";
   renderStaffList();
 };
@@ -692,6 +727,78 @@ async function renderScheduleGrid() {
 // 13) ตารางเวรของฉัน (พนักงาน)
 // ==========================================================================
 document.getElementById("myScheduleMonthInput").onchange = renderMySchedule;
+document.getElementById("calendarMonthInput").onchange = renderCalendar;
+
+function isDutyShiftActive(shiftIdx, dow, isHoliday) {
+  if (dow === 0 || dow === 6 || isHoliday) return true;
+  return shiftIdx === 0 || shiftIdx === 2;
+}
+
+// ปฏิทินเวร: รวมชื่อเล่นของพนักงานอยู่เวรทั้ง 3 ชุด แสดงเป็นตารางปฏิทินรายเดือน (SUN-SAT)
+// แต่ละวันมี 3 แถว = ช่วง1 / ช่วง2 (หรือ "-" ถ้าวันนั้นไม่มี) / ช่วง3 โดยรวมชื่อเล่นจากทั้ง 3 ชุดในช่วงเดียวกัน
+async function renderCalendar() {
+  const box = document.getElementById("calendarBox");
+  const yyyyMm = document.getElementById("calendarMonthInput").value || currentYyyyMm();
+  if (!allGroups.length) allGroups = await getGroups();
+  const dutyGroups = allGroups.filter(isDutyRosterGroup).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!dutyGroups.length) { box.innerHTML = `<div class="empty-hint">ยังไม่มีกลุ่ม "พนักงานอยู่เวร" ในระบบ</div>`; return; }
+
+  if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
+
+  const nicknameMap = {};
+  const groupAssignments = [];
+  for (const g of dutyGroups) {
+    const staffList = await getStaffByGroup(g.id);
+    staffList.forEach((s) => nicknameMap[s.id] = (s.nickname && s.nickname.trim()) || s.name);
+    const assignments = (await loadSchedule(g.id, yyyyMm)) || {};
+    groupAssignments.push(assignments);
+  }
+
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const numDays = daysInMonth(yyyyMm);
+  const firstDow = new Date(y, m - 1, 1).getDay();
+  const todayStr = todayISO(new Date().getFullYear(), new Date().getMonth() + 1, new Date().getDate());
+
+  const weekNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  let head = "<tr>" + weekNames.map((w) => `<th>${w}</th>`).join("") + "</tr>";
+
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= numDays; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  let body = "";
+  for (let w = 0; w < cells.length / 7; w++) {
+    body += "<tr>";
+    for (let c = 0; c < 7; c++) {
+      const d = cells[w * 7 + c];
+      if (d === null) { body += `<td class="cal-empty"></td>`; continue; }
+      const dateObj = new Date(y, m - 1, d);
+      const dow = dateObj.getDay();
+      const iso = todayISO(y, m, d);
+      const isHoliday = !!holidaysMap[iso];
+      let rows = "";
+      for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
+        const active = isDutyShiftActive(shiftIdx, dow, isHoliday);
+        if (!active) { rows += `<div class="cal-shift-row dash">-</div>`; continue; }
+        const names = groupAssignments
+          .map((a) => (a[String(d)] || [])[shiftIdx])
+          .filter(Boolean)
+          .map((id) => nicknameMap[id] || "?");
+        rows += `<div class="cal-shift-row">${names.length ? names.join(" ") : "-"}</div>`;
+      }
+      body += `<td>
+        <div class="cal-day">
+          <div class="cal-daynum${dow === 6 ? " sat" : ""}${iso === todayStr ? " today" : ""}">${d}</div>
+          ${rows}
+        </div>
+      </td>`;
+    }
+    body += "</tr>";
+  }
+
+  box.innerHTML = `<table class="cal-table">${head}${body}</table>`;
+}
 async function renderMySchedule() {
   const box = document.getElementById("myScheduleBox");
   if (!currentStaffProfile) { box.innerHTML = `<div class="empty-hint">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อแอดมิน</div>`; return; }
