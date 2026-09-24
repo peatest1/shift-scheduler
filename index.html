@@ -115,6 +115,35 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .cal-shift-row.dash{color:var(--ink-soft);}
 .cal-holiday-name{font-size:10px;color:#8A5B18;text-align:center;padding:1px 3px 3px;font-weight:600;}
 
+/* ---------- official duty-roster print form ---------- */
+#printFormArea{display:none;}
+.print-page{
+  width:277mm;min-height:190mm;margin:0 auto 6mm;background:#fff;color:#000;
+  padding:10mm 12mm;font-family:'Sarabun',sans-serif;box-sizing:border-box;
+}
+.pf-header{display:flex;gap:14px;align-items:flex-start;margin-bottom:6px;}
+.pf-logo{width:52px;height:52px;border-radius:50%;border:2px solid #14503F;flex:none;
+  display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#14503F;text-align:center;}
+.pf-org-th{font-size:16px;font-weight:700;margin:0;}
+.pf-org-en{font-size:11px;margin:0;letter-spacing:.5px;}
+.pf-meta-table{width:100%;font-size:12.5px;margin:8px 0;border-collapse:collapse;}
+.pf-meta-table td{border:none;padding:1px 4px;text-align:left;vertical-align:top;}
+.pf-meta-label{width:60px;font-weight:600;white-space:nowrap;}
+.pf-title{text-align:center;font-weight:700;font-size:14px;margin:6px 0 8px;}
+.official-table{width:100%;border-collapse:collapse;font-size:9.5px;table-layout:fixed;}
+.official-table th,.official-table td{border:1px solid #000;padding:2px 2px;text-align:center;overflow:hidden;}
+.official-table td.assigned{background:#FFF3A8;font-weight:700;}
+.official-table tr.pf-weekend td{background:#EBEBEB;}
+.official-table tr.pf-holiday td{background:#FFE29A;}
+.official-table tr.pf-sun td:nth-child(1),.official-table tr.pf-sun td:nth-child(2){background:#D8281C;color:#fff;font-weight:700;}
+.pf-total-row td{font-weight:700;background:#F3F1E8;}
+.pf-footer{display:flex;justify-content:space-between;margin-top:16px;font-size:12px;gap:20px;}
+.pf-footer .pf-col{flex:1;text-align:center;}
+.pf-sign-space{height:34px;}
+
+body.printing-form .shell{display:none !important;}
+body.printing-form #printFormArea{display:block;}
+
 /* ---------- print ---------- */
 @media print{
   .sidebar,.no-print{display:none !important;}
@@ -124,6 +153,9 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
   .sched-scroll{max-height:none;overflow:visible;}
   .sched-table .sticky-col{position:static;}
   table{font-size:11px;}
+  @page{size:A4 landscape;margin:8mm;}
+  .print-page{page-break-after:always;width:100%;min-height:0;padding:0;margin:0;}
+  .print-page:last-child{page-break-after:auto;}
 }
 </style>
 </head>
@@ -232,10 +264,36 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
           <div class="field grow"><label>เริ่มต้นที่คนไหนก่อน (ชุดนี้)</label><select id="startStaffSelect"></select></div>
           <div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-small" id="saveSlotsBtn">บันทึกค่านี้</button></div>
           <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="generateScheduleBtn">🔄 สุ่มหมุนเวรอัตโนมัติ</button></div>
-          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printScheduleBtn">🖨️ พิมพ์ / บันทึก PDF</button></div>
+          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printScheduleBtn">🖨️ พิมพ์แบบฟอร์มราชการ (3 ชุด)</button></div>
         </div>
         <p class="auth-sub" style="margin-top:8px;">การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือกทั้งหมด ควรทำก่อนแก้ไขมือ — เลือก "เริ่มต้นที่คนไหนก่อน" เพื่อกำหนดว่าให้ใครได้เวรแรกของวันที่ 1 ช่วง1 ก่อนกดสุ่ม</p>
       </div>
+
+      <details class="panel no-print" id="printSettingsPanel">
+        <summary style="cursor:pointer;font-weight:600;color:var(--teal-900);">⚙️ ตั้งค่าแบบฟอร์มพิมพ์ราชการ (จาก/ถึง/ผู้ลงนาม)</summary>
+        <div class="row-flex" style="margin-top:14px;">
+          <div class="field grow"><label>จาก</label><input type="text" id="pfOrgFrom"></div>
+          <div class="field grow"><label>ถึง</label><input type="text" id="pfOrgTo"></div>
+        </div>
+        <div class="row-flex">
+          <div class="field grow"><label>เรียน (หัวเรื่องบน)</label><input type="text" id="pfAddressee"></div>
+          <div class="field grow"><label>ชื่อหน่วยงาน (ของ กฟส. ...)</label><input type="text" id="pfOfficeLine"></div>
+        </div>
+        <div class="field"><label>ข้อความชี้แจง</label><input type="text" id="pfBodyText" style="width:100%;"></div>
+        <div class="row-flex">
+          <div class="field grow"><label>เรียน (ท้ายฟอร์ม ซ้าย)</label><input type="text" id="pfFooterLeftAddressee"></div>
+          <div class="field grow"><label>วัตถุประสงค์ (ท้ายฟอร์ม ซ้าย)</label><input type="text" id="pfFooterLeftPurpose"></div>
+        </div>
+        <div class="row-flex">
+          <div class="field grow"><label>ชื่อผู้ลงนาม (ซ้าย)</label><input type="text" id="pfFooterLeftSignerName"></div>
+          <div class="field grow"><label>ตำแหน่งผู้ลงนาม (ซ้าย)</label><input type="text" id="pfFooterLeftSignerTitle"></div>
+        </div>
+        <div class="row-flex">
+          <div class="field grow"><label>รายชื่อสำเนาถึง (ขวา)</label><input type="text" id="pfFooterRightDistribution"></div>
+          <div class="field grow"><label>คำอนุมัติ (ขวา)</label><input type="text" id="pfFooterRightApproval"></div>
+        </div>
+        <button class="btn btn-primary btn-small" id="savePrintSettingsBtn">บันทึกการตั้งค่าแบบฟอร์ม</button>
+      </details>
       <div class="panel" id="scheduleGridPanel">
         <div class="sched-scroll">
           <div id="scheduleGrid" class="empty-hint">เลือกกลุ่มและเดือน แล้วกดสุ่มหมุนเวรอัตโนมัติ</div>
@@ -257,6 +315,8 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
     </section>
   </main>
 </div>
+
+<div id="printFormArea"></div>
 
 <script type="module">
 // ==========================================================================
@@ -291,6 +351,27 @@ const db = getFirestore(app);
 // 2) ค่าคงที่ / ตัวแปรสถานะรวม
 // ==========================================================================
 const THAI_DOW = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+const THAI_MONTHS = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+const DEFAULT_PRINT_SETTINGS = {
+  orgFrom: "พชง.ผปบ.เบตง",
+  orgTo: "หผ.ปบ.เบตง",
+  addressee: "ผจก.กฟส.เบตง ผ่าน ชจก.(ท)",
+  bodyText: "เพื่อให้งานปฏิบัติการระบบไฟฟ้าเป็นไปด้วยความเรียบร้อย จึงขออนุมัติจัดตารางเวรของชุดปฏิบัติการระบบไฟฟ้า",
+  officeLine: "กฟส. เบตง",
+  footerLeftAddressee: "เรียน ผจก.กฟส.เบตง ผ่าน หผ.ปบ.เบตง",
+  footerLeftPurpose: "เพื่อโปรดทราบพิจารณาอนุมัติ",
+  footerLeftSignerName: "( นายภูธิป หนูทอง )",
+  footerLeftSignerTitle: "พชง.6 ผปบ.บต.",
+  footerRightDistribution: "ชจก.(ท,บ),นบท.8,ผผ.คพ.,บส.,มต.,ปบ.,กส.,สน.,บป.",
+  footerRightApproval: "อนุมัติตามเสนอ",
+};
+async function getPrintFormSettings() {
+  try {
+    const snap = await getDoc(doc(db, "settings", "printForm"));
+    return snap.exists() ? { ...DEFAULT_PRINT_SETTINGS, ...snap.data() } : { ...DEFAULT_PRINT_SETTINGS };
+  } catch (e) { return { ...DEFAULT_PRINT_SETTINGS }; }
+}
+async function savePrintFormSettings(values) { await setDoc(doc(db, "settings", "printForm"), values, { merge: true }); }
 const DEFAULT_GROUPS = [
   { name: "พนักงานอยู่เวร ชุดที่ 1", slotsPerDay: 3, order: 1, isWeekdayVariable: true },
   { name: "พนักงานอยู่เวร ชุดที่ 2", slotsPerDay: 3, order: 2, isWeekdayVariable: true },
@@ -575,7 +656,40 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById("scheduleMonthInput").value = currentYyyyMm();
   document.getElementById("myScheduleMonthInput").value = currentYyyyMm();
   document.getElementById("calendarMonthInput").value = currentYyyyMm();
+  if (currentRole === "admin") await populatePrintSettingsForm();
 });
+
+async function populatePrintSettingsForm() {
+  const s = await getPrintFormSettings();
+  document.getElementById("pfOrgFrom").value = s.orgFrom;
+  document.getElementById("pfOrgTo").value = s.orgTo;
+  document.getElementById("pfAddressee").value = s.addressee;
+  document.getElementById("pfOfficeLine").value = s.officeLine;
+  document.getElementById("pfBodyText").value = s.bodyText;
+  document.getElementById("pfFooterLeftAddressee").value = s.footerLeftAddressee;
+  document.getElementById("pfFooterLeftPurpose").value = s.footerLeftPurpose;
+  document.getElementById("pfFooterLeftSignerName").value = s.footerLeftSignerName;
+  document.getElementById("pfFooterLeftSignerTitle").value = s.footerLeftSignerTitle;
+  document.getElementById("pfFooterRightDistribution").value = s.footerRightDistribution;
+  document.getElementById("pfFooterRightApproval").value = s.footerRightApproval;
+}
+document.getElementById("savePrintSettingsBtn").onclick = async () => {
+  const values = {
+    orgFrom: document.getElementById("pfOrgFrom").value.trim(),
+    orgTo: document.getElementById("pfOrgTo").value.trim(),
+    addressee: document.getElementById("pfAddressee").value.trim(),
+    officeLine: document.getElementById("pfOfficeLine").value.trim(),
+    bodyText: document.getElementById("pfBodyText").value.trim(),
+    footerLeftAddressee: document.getElementById("pfFooterLeftAddressee").value.trim(),
+    footerLeftPurpose: document.getElementById("pfFooterLeftPurpose").value.trim(),
+    footerLeftSignerName: document.getElementById("pfFooterLeftSignerName").value.trim(),
+    footerLeftSignerTitle: document.getElementById("pfFooterLeftSignerTitle").value.trim(),
+    footerRightDistribution: document.getElementById("pfFooterRightDistribution").value.trim(),
+    footerRightApproval: document.getElementById("pfFooterRightApproval").value.trim(),
+  };
+  await savePrintFormSettings(values);
+  alert("บันทึกการตั้งค่าแบบฟอร์มพิมพ์เรียบร้อย");
+};
 
 // ==========================================================================
 // 9) ภาพรวม
@@ -715,7 +829,7 @@ async function onScheduleTabSelect(groupId) {
   renderScheduleGrid();
 }
 document.getElementById("scheduleMonthInput").onchange = renderScheduleGrid;
-document.getElementById("printScheduleBtn").onclick = () => window.print();
+document.getElementById("printScheduleBtn").onclick = () => buildAndPrintDutyForm();
 document.getElementById("saveSlotsBtn").onclick = async () => {
   if (!activeScheduleGroupId) return;
   const slots = Number(document.getElementById("slotsPerDayInput").value) || 1;
@@ -932,6 +1046,115 @@ async function renderMySchedule() {
   if (!rows) { box.innerHTML = `<div class="empty-hint">ยังไม่มีตารางเวรของกลุ่ม "${currentStaffProfile.groupName}" ในเดือนนี้</div>`; return; }
   box.innerHTML = `<p style="margin-bottom:10px;color:var(--ink-soft);font-size:13px;">กลุ่ม: ${currentStaffProfile.groupName} · รวม ${myCount} เวรในเดือนนี้</p>
     <table><thead><tr><th>วันที่</th><th>วัน</th><th style="text-align:left;">ช่วงเวรที่ได้รับมอบหมาย</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ==========================================================================
+// 14) แบบฟอร์มพิมพ์ราชการ (A4 แนวนอน) — ดึงข้อมูล "พนักงานอยู่เวร" ทั้ง 3 ชุด ชุดละ 1 หน้า
+// ==========================================================================
+async function buildAndPrintDutyForm() {
+  const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const buddhistYear = y + 543;
+  const monthName = THAI_MONTHS[m - 1];
+  const numDays = daysInMonth(yyyyMm);
+
+  if (!allGroups.length) allGroups = await getGroups();
+  const dutyGroups = allGroups.filter(isDutyRosterGroup).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!dutyGroups.length) { alert('ยังไม่มีกลุ่ม "พนักงานอยู่เวร" ในระบบ ไม่สามารถสร้างแบบฟอร์มได้'); return; }
+  if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
+  const settings = await getPrintFormSettings();
+
+  let pagesHtml = "";
+  for (const group of dutyGroups) {
+    const staffList = await getStaffByGroup(group.id);
+    if (!staffList.length) continue;
+    const assignments = (await loadSchedule(group.id, yyyyMm)) || {};
+    pagesHtml += buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, monthName, numDays, settings);
+  }
+  if (!pagesHtml) { alert("ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวรเลย ไม่สามารถสร้างแบบฟอร์มได้"); return; }
+
+  document.getElementById("printFormArea").innerHTML = pagesHtml;
+  document.body.classList.add("printing-form");
+  setTimeout(() => window.print(), 50);
+}
+window.addEventListener("afterprint", () => {
+  document.body.classList.remove("printing-form");
+  document.getElementById("printFormArea").innerHTML = "";
+});
+
+function buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, monthName, numDays, s) {
+  const nameRow = `<tr><th rowspan="3" style="width:5.5%;">วันที่</th><th rowspan="3" style="width:4%;">วัน</th>` +
+    staffList.map((st) => `<th colspan="3">${st.name}</th>`).join("") + `</tr>`;
+  const empIdRow = `<tr>` + staffList.map((st) => `<th colspan="3">${st.empId}</th>`).join("") + `</tr>`;
+  const subHeadRow = `<tr>` + staffList.map(() => `<th>ช่วง1</th><th>ช่วง2</th><th>ช่วง3</th>`).join("") + `</tr>`;
+
+  const totals = {}; staffList.forEach((st) => totals[st.id] = [0, 0, 0]);
+  let bodyRows = "";
+  for (let d = 1; d <= numDays; d++) {
+    const dateObj = new Date(y, m - 1, d);
+    const dow = dateObj.getDay();
+    const iso = todayISO(y, m, d);
+    const isHoliday = !!holidaysMap[iso];
+    const isSun = dow === 0, isSat = dow === 6;
+    const rowClasses = [(isHoliday ? "pf-holiday" : ""), ((isSun || isSat) && !isHoliday ? "pf-weekend" : ""), (isSun ? "pf-sun" : "")].filter(Boolean).join(" ");
+    const activeIdx = isDutyRosterGroup(group) ? activeShiftIndexesForDay(group, dateObj, isHoliday) : [0, 1, 2];
+    const daySlots = assignments[String(d)] || [null, null, null];
+    bodyRows += `<tr class="${rowClasses}"><td>${d}</td><td>${THAI_DOW[dow]}</td>`;
+    staffList.forEach((st) => {
+      for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
+        const active = activeIdx.includes(shiftIdx);
+        const isMe = active && daySlots[shiftIdx] === st.id;
+        if (isMe) totals[st.id][shiftIdx]++;
+        bodyRows += `<td class="${isMe ? "assigned" : ""}">${isMe ? "X" : ""}</td>`;
+      }
+    });
+    bodyRows += "</tr>";
+  }
+
+  let totalRow = `<tr class="pf-total-row"><td colspan="2">รวม</td>`;
+  let grandRow = `<tr class="pf-total-row"><td colspan="2"></td>`;
+  staffList.forEach((st) => {
+    const t = totals[st.id];
+    totalRow += `<td>${t[0]}</td><td>${t[1]}</td><td>${t[2]}</td>`;
+    grandRow += `<td colspan="3">${t[0] + t[1] + t[2]}</td>`;
+  });
+  totalRow += "</tr>"; grandRow += "</tr>";
+
+  return `
+  <div class="print-page">
+    <div class="pf-header">
+      <div class="pf-logo">กฟภ.</div>
+      <div>
+        <p class="pf-org-th">การไฟฟ้าส่วนภูมิภาค</p>
+        <p class="pf-org-en">PROVINCIAL ELECTRICITY AUTHORITY</p>
+      </div>
+    </div>
+    <table class="pf-meta-table">
+      <tr><td class="pf-meta-label">จาก</td><td>${s.orgFrom}</td><td class="pf-meta-label" style="width:60px;">ถึง</td><td>${s.orgTo}</td></tr>
+      <tr><td class="pf-meta-label">เลขที่</td><td></td><td class="pf-meta-label">วันที่</td><td></td></tr>
+      <tr><td class="pf-meta-label">เรื่อง</td><td colspan="3">ขออนุมัติจัดตารางอยู่เวรของชุด ปฏิบัติการระบบไฟฟ้า ประจำเดือน ${monthName} ${buddhistYear}</td></tr>
+      <tr><td class="pf-meta-label">เรียน</td><td colspan="3">${s.addressee}</td></tr>
+      <tr><td></td><td colspan="3">${s.bodyText}</td></tr>
+    </table>
+    <p class="pf-title">ของ ${s.officeLine} ประจำเดือน ${monthName} พ.ศ. ${buddhistYear} ดังต่อไปนี้ — ${group.name}</p>
+    <table class="official-table">
+      ${nameRow}${empIdRow}${subHeadRow}${bodyRows}${totalRow}${grandRow}
+    </table>
+    <div class="pf-footer">
+      <div class="pf-col">
+        <div>เรียน ${s.footerLeftAddressee}</div>
+        <div>${s.footerLeftPurpose}</div>
+        <div class="pf-sign-space"></div>
+        <div>${s.footerLeftSignerName}</div>
+        <div>${s.footerLeftSignerTitle}</div>
+      </div>
+      <div class="pf-col">
+        <div>${s.footerRightDistribution}</div>
+        <div>${s.footerRightApproval}</div>
+        <div class="pf-sign-space"></div>
+      </div>
+    </div>
+  </div>`;
 }
 </script>
 </body>
