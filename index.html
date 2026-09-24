@@ -71,16 +71,12 @@ tr.holiday td{background:var(--amber-100);}
 
 /* ---------- schedule grid: sticky columns/header + employee color banding ---------- */
 .sched-scroll{max-height:75vh;overflow:auto;}
-.sched-table{font-size:12.5px;}
-.sched-table th,.sched-table td{border:1px solid #C9C2AC;padding:5px 4px;}
-.sched-table thead th{position:sticky;top:0;z-index:3;background:var(--teal-900);color:#fff;}
-.sched-table td:nth-child(1),.sched-table td:nth-child(2),
-.sched-table th:nth-child(1),.sched-table th:nth-child(2){
-  position:sticky;left:0;background:var(--teal-900);color:#fff;z-index:2;font-weight:700;
-}
-.sched-table td:nth-child(2),.sched-table th:nth-child(2){left:38px;}
-.sched-table tr.weekend td:nth-child(1),.sched-table tr.weekend td:nth-child(2){background:#12554E;}
-.sched-table tr.holiday td:nth-child(1),.sched-table tr.holiday td:nth-child(2){background:#8A5B18;}
+.sched-table{font-size:12.5px;table-layout:fixed;}
+.sched-table th,.sched-table td{border:1px solid #C9C2AC;padding:5px 4px;overflow:hidden;text-overflow:ellipsis;}
+.sched-table .sticky-col{position:sticky;left:0;background:var(--teal-900);color:#fff;z-index:2;font-weight:700;}
+.sched-table .sticky-col2{left:44px;}
+.sched-table tr.weekend .sticky-col{background:#12554E;}
+.sched-table tr.holiday .sticky-col{background:#8A5B18;}
 .emp-a{background:#FFFFFF;}
 .emp-b{background:#EFEAD9;}
 .emp-border-end{border-right:3px solid var(--teal-900) !important;}
@@ -126,7 +122,7 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
   .shell{display:block;}
   .panel{border:none;padding:0;margin-bottom:14px;}
   .sched-scroll{max-height:none;overflow:visible;}
-  .sched-table thead th,.sched-table td:nth-child(1),.sched-table td:nth-child(2),.sched-table th:nth-child(1),.sched-table th:nth-child(2){position:static;}
+  .sched-table .sticky-col{position:static;}
   table{font-size:11px;}
 }
 </style>
@@ -186,7 +182,7 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
       <div class="panel no-print">
         <div class="row-flex">
           <div class="field" style="max-width:220px;"><label>เดือน</label><input type="month" id="calendarMonthInput"></div>
-          <button class="btn btn-ghost" id="printCalendarBtn" style="height:38px;">🖨️ พิมพ์ / บันทึก PDF</button>
+          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printCalendarBtn">🖨️ พิมพ์ / บันทึก PDF</button></div>
         </div>
       </div>
       <div class="panel scroll-x"><div id="calendarBox" class="empty-hint">เลือกเดือนเพื่อดูปฏิทินเวร</div></div>
@@ -212,7 +208,7 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
       <div class="panel">
         <div class="row-flex">
           <div class="field"><label>ปี (พ.ศ.)</label><input type="number" id="holidayYearInput" style="width:110px;"></div>
-          <button class="btn btn-ghost" id="loadHolidaysBtn" style="height:38px;">โหลดวันหยุดราชการ</button>
+          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="loadHolidaysBtn">โหลดวันหยุดราชการ</button></div>
         </div>
       </div>
       <div class="panel">
@@ -233,11 +229,12 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
         <div class="row-flex">
           <div class="field"><label>เดือน</label><input type="month" id="scheduleMonthInput"></div>
           <div class="field"><label>จำนวนช่วงเวร/วัน</label><input type="number" id="slotsPerDayInput" min="1" max="6" style="width:90px;"></div>
-          <button class="btn btn-ghost btn-small" id="saveSlotsBtn" style="height:38px;">บันทึกค่านี้</button>
-          <button class="btn btn-primary" id="generateScheduleBtn" style="height:38px;">🔄 สุ่มหมุนเวรอัตโนมัติ</button>
-          <button class="btn btn-ghost" id="printScheduleBtn" style="height:38px;">🖨️ พิมพ์ / บันทึก PDF</button>
+          <div class="field grow"><label>เริ่มต้นที่คนไหนก่อน (ชุดนี้)</label><select id="startStaffSelect"></select></div>
+          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-small" id="saveSlotsBtn">บันทึกค่านี้</button></div>
+          <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="generateScheduleBtn">🔄 สุ่มหมุนเวรอัตโนมัติ</button></div>
+          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printScheduleBtn">🖨️ พิมพ์ / บันทึก PDF</button></div>
         </div>
-        <p class="auth-sub" style="margin-top:8px;">การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือกทั้งหมด ควรทำก่อนแก้ไขมือ</p>
+        <p class="auth-sub" style="margin-top:8px;">การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือกทั้งหมด ควรทำก่อนแก้ไขมือ — เลือก "เริ่มต้นที่คนไหนก่อน" เพื่อกำหนดว่าให้ใครได้เวรแรกของวันที่ 1 ช่วง1 ก่อนกดสุ่ม</p>
       </div>
       <div class="panel" id="scheduleGridPanel">
         <div class="sched-scroll">
@@ -276,15 +273,15 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
-apiKey: "AIzaSyDnhKGBnLpTIaOAvlBhyBcdgA1kH_-Cd1w",
-  authDomain: "van-betong.firebaseapp.com",
-  projectId: "van-betong",
-  storageBucket: "van-betong.firebasestorage.app",
-  messagingSenderId: "170306762465",
-  appId: "1:170306762465:web:fa863e88c36d42308c29a0"
+  apiKey: "PASTE_YOUR_API_KEY",
+  authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
+  projectId: "PASTE_YOUR_PROJECT_ID",
+  storageBucket: "PASTE_YOUR_PROJECT.appspot.com",
+  messagingSenderId: "PASTE_SENDER_ID",
+  appId: "PASTE_APP_ID"
 };
 // รหัสลับสำหรับสมัครบัญชีแอดมินคนแรก (แก้เป็นรหัสของคุณเองก่อน deploy แล้วอย่าเผยแพร่)
-const ADMIN_SETUP_KEY = "BTG888";
+const ADMIN_SETUP_KEY = "CHANGE_ME_BEFORE_DEPLOY_2569";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -431,13 +428,13 @@ async function removeHoliday(dateStr) { await deleteDoc(doc(db, "holidays", date
 // 5) ตารางเวร
 // ==========================================================================
 function scheduleId(groupId, yyyyMm) { return `${groupId}_${yyyyMm}`; }
-function generateRotation(staffList, group, yyyyMm, holidaysMap) {
+function generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex) {
   const n = staffList.length;
   const days = daysInMonth(yyyyMm);
   const assignments = {};
   if (n === 0) return assignments;
   const [y, m] = yyyyMm.split("-").map(Number);
-  let pointer = m % n;
+  let pointer = (startIndex !== null && startIndex !== undefined) ? startIndex : (m % n);
   for (let day = 1; day <= days; day++) {
     const dateObj = new Date(y, m - 1, day);
     const iso = todayISO(y, m, day);
@@ -700,17 +697,21 @@ async function renderHolidayList() {
 // ==========================================================================
 // 12) ตารางเวร (แอดมิน)
 // ==========================================================================
-function onScheduleTabSelect(groupId) {
+async function onScheduleTabSelect(groupId) {
   activeScheduleGroupId = groupId;
   const g = allGroups.find((x) => x.id === groupId);
   const slotsField = document.getElementById("slotsPerDayInput").closest(".field");
   const saveBtn = document.getElementById("saveSlotsBtn");
   if (g && isDutyRosterGroup(g)) {
-    slotsField.classList.add("hidden"); saveBtn.classList.add("hidden");
+    slotsField.classList.add("hidden"); saveBtn.closest(".field").classList.add("hidden");
   } else {
-    slotsField.classList.remove("hidden"); saveBtn.classList.remove("hidden");
+    slotsField.classList.remove("hidden"); saveBtn.closest(".field").classList.remove("hidden");
     document.getElementById("slotsPerDayInput").value = g ? g.slotsPerDay : 3;
   }
+  const staffList = await getStaffByGroup(groupId);
+  const sel = document.getElementById("startStaffSelect");
+  sel.innerHTML = `<option value="">-- คนแรกในลำดับ (ค่าเริ่มต้น) --</option>` +
+    staffList.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
   renderScheduleGrid();
 }
 document.getElementById("scheduleMonthInput").onchange = renderScheduleGrid;
@@ -730,8 +731,10 @@ document.getElementById("generateScheduleBtn").onclick = async () => {
   if (!staffList.length) { alert("กลุ่มนี้ยังไม่มีพนักงาน"); return; }
   const group = allGroups.find((g) => g.id === activeScheduleGroupId);
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
+  const startStaffId = document.getElementById("startStaffSelect").value;
+  const startIndex = startStaffId ? staffList.findIndex((s) => s.id === startStaffId) : undefined;
   if (!confirm("การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือก ยืนยันหรือไม่?")) return;
-  const assignments = generateRotation(staffList, group, yyyyMm, holidaysMap);
+  const assignments = generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex >= 0 ? startIndex : undefined);
   await saveSchedule(activeScheduleGroupId, yyyyMm, assignments);
   renderScheduleGrid();
 };
@@ -751,8 +754,14 @@ async function renderScheduleGrid() {
   const isDuty = isDutyRosterGroup(group);
   const fixedSlots = Number(document.getElementById("slotsPerDayInput").value) || group.slotsPerDay || 3;
 
+  // colgroup ให้ทุกคอลัมน์พนักงานกว้างเท่ากันเป๊ะ ไม่ขึ้นกับความยาวชื่อ
+  let colgroup = `<colgroup><col style="width:44px"><col style="width:38px">` +
+    staffList.map(() => `<col style="width:58px"><col style="width:58px"><col style="width:58px">`).join("") +
+    `</colgroup>`;
+
   // แถวหัวตาราง 1: ชื่อพนักงาน (colspan 3), แถวหัวตาราง 2: ช่วง1/ช่วง2/ช่วง3 — สลับสีพื้นหลังตามพนักงานแต่ละคนให้แยกกลุ่มชัดเจน
-  let headRow1 = `<tr><th rowspan="2">วันที่</th><th rowspan="2">วัน</th>`;
+  // (ใช้ class .sticky-col/.sticky-col2 อย่างชัดเจนแทน nth-child เพื่อไม่ให้หลุดไปโดนคอลัมน์อื่นตอนมี colspan/rowspan)
+  let headRow1 = `<tr><th rowspan="2" class="sticky-col">วันที่</th><th rowspan="2" class="sticky-col sticky-col2">วัน</th>`;
   let headRow2 = "<tr>";
   staffList.forEach((s, i) => {
     const band = i % 2 === 0 ? "emp-a" : "emp-b";
@@ -777,7 +786,7 @@ async function renderScheduleGrid() {
       : Array.from({ length: fixedSlots }, (_, i) => i);
     const daySlots = assignments[String(d)] || [null, null, null];
 
-    body += `<tr class="${rowClass}"><td>${d}</td><td>${THAI_DOW[dow]}${isHoliday ? " •" : ""}</td>`;
+    body += `<tr class="${rowClass}"><td class="sticky-col">${d}</td><td class="sticky-col sticky-col2">${THAI_DOW[dow]}${isHoliday ? " •" : ""}</td>`;
     staffList.forEach((s, i) => {
       const band = i % 2 === 0 ? "emp-a" : "emp-b";
       for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
@@ -796,14 +805,14 @@ async function renderScheduleGrid() {
     body += "</tr>";
   }
 
-  let totalRow1 = `<tr><td colspan="2" class="name-cell">รวมแต่ละช่วง</td>`;
+  let totalRow1 = `<tr><td colspan="2" class="name-cell sticky-col">รวมแต่ละช่วง</td>`;
   staffList.forEach((s, i) => {
     const band = i % 2 === 0 ? "emp-a" : "emp-b";
     const t = perStaffShiftTotal[s.id];
     totalRow1 += `<td class="${band}">${t[0]}</td><td class="${band}">${t[1]}</td><td class="${band} emp-border-end">${t[2]}</td>`;
   });
   totalRow1 += "</tr>";
-  let totalRow2 = `<tr><td colspan="2" class="name-cell">รวมทั้งหมด</td>`;
+  let totalRow2 = `<tr><td colspan="2" class="name-cell sticky-col">รวมทั้งหมด</td>`;
   staffList.forEach((s, i) => {
     const band = i % 2 === 0 ? "emp-a" : "emp-b";
     const t = perStaffShiftTotal[s.id];
@@ -811,7 +820,7 @@ async function renderScheduleGrid() {
   });
   totalRow2 += "</tr>";
 
-  box.innerHTML = `<table class="sched-table">${headRow1}${headRow2}${body}${totalRow1}${totalRow2}</table>`;
+  box.innerHTML = `<table class="sched-table">${colgroup}${headRow1}${headRow2}${body}${totalRow1}${totalRow2}</table>`;
   box.querySelectorAll(".cell-toggle").forEach((btn) => {
     btn.onclick = async () => {
       const day = btn.dataset.day, shiftIdx = Number(btn.dataset.shift), staffId = btn.dataset.staff;
