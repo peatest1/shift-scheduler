@@ -80,10 +80,8 @@ tr.holiday td{background:var(--amber-100);}
 .emp-a{background:#FFFFFF;}
 .emp-b{background:#EFEAD9;}
 .emp-border-end{border-right:3px solid var(--teal-900) !important;}
-.sched-table tr.weekend .emp-a{background:#FBFAF3;}
-.sched-table tr.weekend .emp-b{background:#F1EBD5;}
-.sched-table tr.holiday .emp-a{background:#FBEFD5;}
-.sched-table tr.holiday .emp-b{background:#F5E3B8;}
+.sched-table tr.weekend td:not(.sticky-col){background:#D9EAF5 !important;}
+.sched-table tr.holiday td:not(.sticky-col){background:#FFD98A !important;}
 
 .row-flex{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
 .grow{flex:1;min-width:160px;}
@@ -111,8 +109,8 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .cal-day.is-holiday .cal-daynum{background:var(--amber-500);color:#fff;}
 .cal-daynum.today{outline:2px solid var(--teal-500);outline-offset:-2px;}
 .cal-empty{background:#8C8C8C;}
-.cal-shift-row{font-size:11.5px;text-align:center;padding:3px 4px;border-top:1px dashed var(--line);white-space:normal;word-break:break-word;}
-.cal-shift-row.dash{color:var(--ink-soft);}
+.cal-shift-row{font-size:16px;font-weight:600;color:#14211C;text-align:center;padding:4px 4px;border-top:1px dashed var(--line);white-space:normal;word-break:break-word;line-height:1.3;}
+.cal-shift-row.dash{color:#8A8378;font-weight:400;}
 .cal-holiday-name{font-size:10px;color:#8A5B18;text-align:center;padding:1px 3px 3px;font-weight:600;}
 
 /* ---------- official duty-roster print form ---------- */
@@ -267,6 +265,17 @@ body.printing-form #printFormArea{display:block;}
           <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printScheduleBtn">🖨️ พิมพ์แบบฟอร์มราชการ (3 ชุด)</button></div>
         </div>
         <p class="auth-sub" style="margin-top:8px;">การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือกทั้งหมด ควรทำก่อนแก้ไขมือ — เลือก "เริ่มต้นที่คนไหนก่อน" เพื่อกำหนดว่าให้ใครได้เวรแรกของวันที่ 1 ช่วง1 ก่อนกดสุ่ม</p>
+      </div>
+
+      <div class="panel no-print">
+        <h3>เว้นคนเฉพาะวัน (กันไม่ให้ลำดับซ้ำจำเจ)</h3>
+        <p class="auth-sub" style="margin-top:-6px;margin-bottom:10px;">ถ้าถึงคิวคนที่เลือกในวันที่ระบุพอดี ระบบจะข้ามคนนั้นไปให้คนถัดไปแทน แล้วหมุนต่อตามปกติ (ไม่รีเซ็ตลำดับ) เพิ่มได้หลายเงื่อนไข ใช้ก่อนกด "สุ่มหมุนเวรอัตโนมัติ"</p>
+        <div class="row-flex">
+          <div class="field grow"><label>เว้นพนักงาน</label><select id="skipStaffSelect"></select></div>
+          <div class="field"><label>วันที่ (ของเดือนนี้)</label><input type="number" id="skipDayInput" min="1" max="31" style="width:90px;"></div>
+          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-small" id="addSkipRuleBtn">+ เพิ่มเงื่อนไข</button></div>
+        </div>
+        <div id="skipRulesList" class="empty-hint" style="padding:8px 0;text-align:left;">ยังไม่มีเงื่อนไขเว้นคน</div>
       </div>
 
       <details class="panel no-print" id="printSettingsPanel">
@@ -510,20 +519,33 @@ async function removeHoliday(dateStr) { await deleteDoc(doc(db, "holidays", date
 // 5) ตารางเวร
 // ==========================================================================
 function scheduleId(groupId, yyyyMm) { return `${groupId}_${yyyyMm}`; }
-function generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex) {
+function generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex, skipRules) {
   const n = staffList.length;
   const days = daysInMonth(yyyyMm);
   const assignments = {};
   if (n === 0) return assignments;
   const [y, m] = yyyyMm.split("-").map(Number);
   let pointer = (startIndex !== null && startIndex !== undefined) ? startIndex : (m % n);
+  // เว้นคนเฉพาะวัน: day -> Set ของ staffId ที่ต้องข้ามไป 1 คิวถ้าถึงคิวพอดี (ใช้ได้ครั้งเดียวต่อเงื่อนไข)
+  const skipMap = {};
+  (skipRules || []).forEach((r) => { if (!skipMap[r.day]) skipMap[r.day] = new Set(); skipMap[r.day].add(r.staffId); });
   for (let day = 1; day <= days; day++) {
     const dateObj = new Date(y, m - 1, day);
     const iso = todayISO(y, m, day);
     const isHoliday = !!holidaysMap[iso];
     const activeIdx = activeShiftIndexesForDay(group, dateObj, isHoliday);
     const slots = [null, null, null];
-    activeIdx.forEach((shiftIdx) => { slots[shiftIdx] = staffList[pointer % n].id; pointer++; });
+    const daySkipSet = skipMap[day];
+    activeIdx.forEach((shiftIdx) => {
+      let candidate = staffList[pointer % n];
+      if (daySkipSet && daySkipSet.has(candidate.id)) {
+        daySkipSet.delete(candidate.id);
+        pointer++;
+        candidate = staffList[pointer % n];
+      }
+      slots[shiftIdx] = candidate.id;
+      pointer++;
+    });
     assignments[String(day)] = slots;
   }
   return assignments;
@@ -812,6 +834,7 @@ async function renderHolidayList() {
 // ==========================================================================
 // 12) ตารางเวร (แอดมิน)
 // ==========================================================================
+let scheduleSkipRules = [];
 async function onScheduleTabSelect(groupId) {
   activeScheduleGroupId = groupId;
   const g = allGroups.find((x) => x.id === groupId);
@@ -827,8 +850,34 @@ async function onScheduleTabSelect(groupId) {
   const sel = document.getElementById("startStaffSelect");
   sel.innerHTML = `<option value="">-- คนแรกในลำดับ (ค่าเริ่มต้น) --</option>` +
     staffList.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
+  const skipSel = document.getElementById("skipStaffSelect");
+  skipSel.innerHTML = staffList.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
+  scheduleSkipRules = [];
+  renderSkipRulesList(staffList);
   renderScheduleGrid();
 }
+function renderSkipRulesList(staffList) {
+  const box = document.getElementById("skipRulesList");
+  if (!scheduleSkipRules.length) { box.innerHTML = `<div class="empty-hint" style="text-align:left;">ยังไม่มีเงื่อนไขเว้นคน</div>`; return; }
+  box.innerHTML = scheduleSkipRules.map((r, i) => {
+    const staff = staffList.find((s) => s.id === r.staffId);
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px;">
+      <span>วันที่ ${r.day} — เว้น <strong>${staff ? staff.name : "?"}</strong> (ให้คิวถัดไปแทน)</span>
+      <button class="mini-btn" data-idx="${i}">ลบ</button>
+    </div>`;
+  }).join("");
+  box.querySelectorAll(".mini-btn").forEach((btn) => {
+    btn.onclick = () => { scheduleSkipRules.splice(Number(btn.dataset.idx), 1); renderSkipRulesList(staffList); };
+  });
+}
+document.getElementById("addSkipRuleBtn").onclick = async () => {
+  const staffId = document.getElementById("skipStaffSelect").value;
+  const day = Number(document.getElementById("skipDayInput").value);
+  if (!staffId || !day) { alert("กรุณาเลือกพนักงานและระบุวันที่"); return; }
+  scheduleSkipRules.push({ staffId, day });
+  const staffList = await getStaffByGroup(activeScheduleGroupId);
+  renderSkipRulesList(staffList);
+};
 document.getElementById("scheduleMonthInput").onchange = renderScheduleGrid;
 document.getElementById("printScheduleBtn").onclick = () => buildAndPrintDutyForm();
 document.getElementById("saveSlotsBtn").onclick = async () => {
@@ -849,7 +898,7 @@ document.getElementById("generateScheduleBtn").onclick = async () => {
   const startStaffId = document.getElementById("startStaffSelect").value;
   const startIndex = startStaffId ? staffList.findIndex((s) => s.id === startStaffId) : undefined;
   if (!confirm("การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือก ยืนยันหรือไม่?")) return;
-  const assignments = generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex >= 0 ? startIndex : undefined);
+  const assignments = generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex >= 0 ? startIndex : undefined, scheduleSkipRules);
   await saveSchedule(activeScheduleGroupId, yyyyMm, assignments);
   renderScheduleGrid();
 };
