@@ -24,23 +24,28 @@ a{color:inherit;}
 .auth-card .brand{display:flex;align-items:baseline;gap:8px;margin-bottom:4px;}
 .brand-mark{width:10px;height:10px;background:var(--amber-500);display:inline-block;flex:none;}
 
-/* ---------- animated PEA outage-maintenance badge ---------- */
+/* ---------- animated PEA outage-maintenance badge: flickering lightning bolts ---------- */
 .pea-badge-wrap{display:flex;justify-content:center;margin-bottom:6px;}
 .pea-badge{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none;}
-.pea-badge .pea-ring{position:absolute;top:0;left:0;width:100%;height:100%;animation:pea-spin 3s linear infinite;filter:drop-shadow(0 0 3px rgba(255,213,74,.85));}
-.pea-badge .pea-logo-img{position:relative;z-index:1;width:76%;height:76%;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));animation:pea-pulse 2.6s ease-in-out infinite;}
-@keyframes pea-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
-@keyframes pea-pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.045);}}
+.pea-badge .pea-bolts{position:absolute;inset:0;pointer-events:none;}
+.pea-badge .pea-bolt{position:absolute;width:42%;height:42%;opacity:0;filter:drop-shadow(0 0 2px #FFF6D6) drop-shadow(0 0 6px #FFD54A) drop-shadow(0 0 10px #FFB300);animation:pea-flicker 3.6s infinite;}
+.pea-badge .pea-bolt:nth-child(1){top:-10%;left:29%;transform:rotate(-8deg);animation-delay:0s;}
+.pea-badge .pea-bolt:nth-child(2){top:29%;right:-12%;transform:rotate(82deg);animation-delay:.9s;}
+.pea-badge .pea-bolt:nth-child(3){bottom:-10%;left:29%;transform:rotate(172deg);animation-delay:1.8s;}
+.pea-badge .pea-bolt:nth-child(4){top:29%;left:-12%;transform:rotate(-98deg);animation-delay:2.7s;}
+.pea-badge .pea-logo-img{position:relative;z-index:1;width:76%;height:76%;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));}
+@keyframes pea-flicker{
+  0%{opacity:0;}
+  2%{opacity:1;}
+  4%{opacity:.15;}
+  6%{opacity:.9;}
+  8%{opacity:0;}
+  10%{opacity:.6;}
+  12%{opacity:0;}
+  100%{opacity:0;}
+}
 .pea-badge-sm{width:42px;height:42px;}
-.pea-badge-lg{width:92px;height:92px;}
-.pea-badge-wrap{display:flex;justify-content:center;margin-bottom:6px;}
-.pea-badge{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none;}
-.pea-badge .pea-ring{position:absolute;top:0;left:0;width:100%;height:100%;animation:pea-spin 3s linear infinite;transform-origin:50% 50%;filter:drop-shadow(0 0 3px rgba(255,213,74,.75));}
-.pea-badge .pea-logo-img{position:relative;z-index:1;width:78%;height:78%;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));animation:pea-pulse 2.4s ease-in-out infinite;}
-.pea-badge-sm{width:42px;height:42px;}
-.pea-badge-lg{width:104px;height:104px;}
-@keyframes pea-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
-@keyframes pea-pulse{0%,100%{filter:drop-shadow(0 1px 2px rgba(0,0,0,.3)) drop-shadow(0 0 0 rgba(255,213,74,0));}50%{filter:drop-shadow(0 1px 2px rgba(0,0,0,.3)) drop-shadow(0 0 6px rgba(255,213,74,.85));}}
+.pea-badge-lg{width:100px;height:100px;}
 .auth-sub{color:var(--ink-soft);font-size:13px;margin-bottom:24px;}
 .tab-row{display:flex;border-bottom:1px solid var(--line);margin-bottom:20px;}
 .tab-btn{flex:1;background:none;border:none;padding:10px 0;cursor:pointer;font-family:inherit;font-size:14px;color:var(--ink-soft);border-bottom:2px solid transparent;}
@@ -185,7 +190,12 @@ body.printing-form #printFormArea{display:block;}
   <div class="auth-card">
     <div class="pea-badge-wrap">
       <div class="pea-badge pea-badge-lg">
-        <svg class="pea-ring" viewBox="0 0 100 100"><defs><linearGradient id="sparkGradLogin" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FFD54A" stop-opacity="0"/><stop offset="50%" stop-color="#FFD54A" stop-opacity="1"/><stop offset="100%" stop-color="#FFD54A" stop-opacity="0"/></linearGradient></defs><circle cx="50" cy="50" r="46" fill="none" stroke="url(#sparkGradLogin)" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="46 250"/></svg>
+        <div class="pea-bolts">
+          <svg class="pea-bolt" viewBox="0 0 24 24"><path d="M13 1 L4 14 H10.5 L8.5 23 L20 9 H12.5 Z" fill="#FFE14D" stroke="#FFFFFF" stroke-width="0.6" stroke-linejoin="round"/></svg>
+          <svg class="pea-bolt" viewBox="0 0 24 24"><path d="M13 1 L4 14 H10.5 L8.5 23 L20 9 H12.5 Z" fill="#FFE14D" stroke="#FFFFFF" stroke-width="0.6" stroke-linejoin="round"/></svg>
+          <svg class="pea-bolt" viewBox="0 0 24 24"><path d="M13 1 L4 14 H10.5 L8.5 23 L20 9 H12.5 Z" fill="#FFE14D" stroke="#FFFFFF" stroke-width="0.6" stroke-linejoin="round"/></svg>
+          <svg class="pea-bolt" viewBox="0 0 24 24"><path d="M13 1 L4 14 H10.5 L8.5 23 L20 9 H12.5 Z" fill="#FFE14D" stroke="#FFFFFF" stroke-width="0.6" stroke-linejoin="round"/></svg>
+        </div>
         <img class="pea-logo-img" id="pfLogoLogin" alt="PEA">
       </div>
     </div>
@@ -218,7 +228,12 @@ body.printing-form #printFormArea{display:block;}
   <nav class="sidebar">
     <div class="brand" style="display:flex;align-items:center;gap:10px;">
       <div class="pea-badge pea-badge-sm">
-        <svg class="pea-ring" viewBox="0 0 100 100"><defs><linearGradient id="sparkGradSidebar" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FFD54A" stop-opacity="0"/><stop offset="50%" stop-color="#FFD54A" stop-opacity="1"/><stop offset="100%" stop-color="#FFD54A" stop-opacity="0"/></linearGradient></defs><circle cx="50" cy="50" r="46" fill="none" stroke="url(#sparkGradSidebar)" stroke-width="6" stroke-linecap="round" stroke-dasharray="36 250"/></svg>
+        <div class="pea-bolts">
+          <svg class="pea-bolt" viewBox="0 0 24 24"><path d="M13 1 L4 14 H10.5 L8.5 23 L20 9 H12.5 Z" fill="#FFE14D" stroke="#FFFFFF" stroke-width="0.6" stroke-linejoin="round"/></svg>
+          <svg class="pea-bolt" viewBox="0 0 24 24"><path d="M13 1 L4 14 H10.5 L8.5 23 L20 9 H12.5 Z" fill="#FFE14D" stroke="#FFFFFF" stroke-width="0.6" stroke-linejoin="round"/></svg>
+          <svg class="pea-bolt" viewBox="0 0 24 24"><path d="M13 1 L4 14 H10.5 L8.5 23 L20 9 H12.5 Z" fill="#FFE14D" stroke="#FFFFFF" stroke-width="0.6" stroke-linejoin="round"/></svg>
+          <svg class="pea-bolt" viewBox="0 0 24 24"><path d="M13 1 L4 14 H10.5 L8.5 23 L20 9 H12.5 Z" fill="#FFE14D" stroke="#FFFFFF" stroke-width="0.6" stroke-linejoin="round"/></svg>
+        </div>
         <img class="pea-logo-img" id="pfLogoSidebar" alt="PEA">
       </div>
       <div>
