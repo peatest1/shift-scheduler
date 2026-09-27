@@ -164,6 +164,32 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .history-table td{text-align:left;}
 .history-table td.c{text-align:center;}
 .orig-status{font-size:13px;padding:8px 10px;border-radius:var(--radius);background:var(--amber-100);color:var(--teal-900);margin-top:10px;}
+
+/* ---------- schedule page toolbar ---------- */
+.sched-toolbar{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px 14px;padding:14px 18px;}
+.tb-group{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;}
+.tb-field{margin-bottom:0;}
+.tb-field label{font-size:12px;margin-bottom:3px;}
+.tb-field input{padding:7px 9px;}
+.tb-btn{padding:8px 13px;white-space:nowrap;width:auto;}
+.tb-divider{width:1px;align-self:stretch;background:var(--line);}
+.tb-spacer{flex:1;}
+.tb-select{padding:8px 9px;border:1px solid var(--line);border-radius:var(--radius);font-family:inherit;font-size:13px;background:#fff;}
+.tb-menu-wrap{position:relative;}
+.tb-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:20;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 6px 18px rgba(0,0,0,.12);min-width:210px;padding:4px 0;}
+.tb-menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:9px 14px;font-family:inherit;font-size:13.5px;cursor:pointer;color:var(--ink);}
+.tb-menu button:hover{background:#F7E3DE;color:var(--danger);}
+.orig-pill{font-size:12.5px;padding:4px 10px;border-radius:12px;background:var(--amber-100);color:#8A5B18;align-self:center;cursor:help;white-space:nowrap;}
+.orig-pill.locked{background:#E1F0E7;color:var(--ok);}
+.sched-options{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-items:start;}
+.opt-panel{padding:0;margin-bottom:16px;}
+.opt-panel summary{cursor:pointer;padding:12px 18px;font-weight:600;font-size:14px;color:var(--teal-900);list-style-position:inside;}
+.opt-panel[open] summary{border-bottom:1px solid var(--line);}
+.opt-body{padding:14px 18px 16px;}
+.opt-body .field{margin-bottom:10px;}
+.opt-sub{display:block;font-size:12.5px;color:var(--ink-soft);margin:4px 0 6px;}
+.opt-count{font-weight:400;font-size:12px;color:var(--ink-soft);}
+@media (max-width:1100px){.sched-options{grid-template-columns:1fr;}.tb-spacer{display:none;}.tb-divider{display:none;}}
 .sched-table td.changed{box-shadow:inset 0 0 0 2px #D97706;}
 .sched-table th.guest{background:#FDE7C8 !important;}
 .official-table th.pf-guest{background:#F3E3C3;}
@@ -335,83 +361,101 @@ body.printing-form #printFormArea{display:block;}
     </section>
 
     <section class="view" id="view-schedule">
-      <div class="page-head"><div><h2>จัดตารางเวร</h2><p>สุ่มหมุนเวียนอัตโนมัติ แล้วแก้ไขทีละช่องได้</p></div></div>
+      <div class="page-head"><div><h2>จัดตารางเวร</h2><p>เลือกชุดและเดือน → สุ่มหมุนเวร → คลิกแก้ทีละช่องในตาราง</p></div></div>
       <div class="group-tabs no-print" id="scheduleGroupTabs"></div>
-      <div class="panel no-print">
-        <div class="row-flex">
-          <div class="field"><label>เดือน</label><input type="month" id="scheduleMonthInput"></div>
-          <div class="field"><label>จำนวนช่วงเวร/วัน</label><input type="number" id="slotsPerDayInput" min="1" max="6" style="width:90px;"></div>
-          <div class="field grow"><label>เริ่มต้นที่คนไหนก่อน (ชุดนี้)</label><select id="startStaffSelect"></select></div>
-          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-small" id="saveSlotsBtn">บันทึกค่านี้</button></div>
-          <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="generateScheduleBtn">🔄 สุ่มหมุนเวรอัตโนมัติ</button></div>
-        </div>
-        <p class="auth-sub" style="margin-top:8px;">การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือกทั้งหมด ควรทำก่อนแก้ไขมือ — เลือก "เริ่มต้นที่คนไหนก่อน" เพื่อกำหนดว่าให้ใครได้เวรแรกของวันที่ 1 ช่วง1 ก่อนกดสุ่ม</p>
-      </div>
 
-      <div class="panel no-print">
-        <h3>ฉบับเสนอลงนาม และการพิมพ์</h3>
-        <div class="row-flex">
-          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="lockOriginalBtn">📌 บันทึกเป็นฉบับเสนอลงนาม (ทุกชุด เดือนนี้)</button></div>
-          <div class="field"><label>ฉบับที่จะพิมพ์</label>
-            <select id="printVersionSelect" style="padding:9px 10px;border:1px solid var(--line);border-radius:var(--radius);font-family:inherit;">
-              <option value="current">ฉบับปัจจุบัน (รวมการแลกเวรแล้ว)</option>
-              <option value="original">ฉบับเสนอลงนาม (ก่อนแลกเวร)</option>
-            </select>
+      <!-- แถบเครื่องมือหลัก: รวมทุกปุ่มที่ใช้บ่อยไว้แถวเดียว -->
+      <div class="panel no-print sched-toolbar">
+        <div class="tb-group">
+          <div class="field tb-field"><label>เดือน</label><input type="month" id="scheduleMonthInput"></div>
+          <div class="field tb-field"><label>ช่วงเวร/วัน</label>
+            <div class="tb-inline"><input type="number" id="slotsPerDayInput" min="1" max="3" style="width:64px;"></div>
           </div>
-          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printScheduleBtn">🖨️ พิมพ์แบบฟอร์มราชการ (3 ชุด)</button></div>
+          <div class="field tb-field"><label>&nbsp;</label><button class="btn btn-ghost btn-small" id="saveSlotsBtn" title="บันทึกจำนวนช่วงเวร/วัน ของกลุ่มนี้">บันทึก</button></div>
         </div>
-        <div id="originalStatusBox" class="orig-status">กำลังตรวจสอบ...</div>
+        <div class="tb-divider"></div>
+        <div class="tb-group">
+          <button class="btn btn-primary tb-btn" id="generateScheduleBtn">🔄 สุ่มหมุนเวร</button>
+          <div class="tb-menu-wrap">
+            <button class="btn btn-danger tb-btn" id="clearScheduleMenuBtn">🗑️ ล้างตาราง ▾</button>
+            <div class="tb-menu hidden" id="clearScheduleMenu">
+              <button id="clearThisGroupBtn">ล้างเฉพาะชุดนี้ (เดือนนี้)</button>
+              <button id="clearAllGroupsBtn">ล้างทุกชุด (เดือนนี้)</button>
+            </div>
+          </div>
+        </div>
+        <div class="tb-divider"></div>
+        <div class="tb-group">
+          <button class="btn btn-ghost tb-btn" id="lockOriginalBtn" title="เก็บสำเนาตารางปัจจุบันของทุกชุดไว้เป็นฉบับที่เสนอเซ็น ฉบับนี้จะไม่เปลี่ยนตามการแลกเวร">📌 บันทึกฉบับเสนอลงนาม</button>
+          <span id="originalStatusBox" class="orig-pill">…</span>
+        </div>
+        <div class="tb-spacer"></div>
+        <div class="tb-group">
+          <select id="printVersionSelect" class="tb-select" title="เลือกฉบับที่จะพิมพ์">
+            <option value="current">พิมพ์ฉบับปัจจุบัน</option>
+            <option value="original">พิมพ์ฉบับเสนอลงนาม</option>
+          </select>
+          <button class="btn btn-ghost tb-btn" id="printScheduleBtn">🖨️ พิมพ์ (3 ชุด)</button>
+        </div>
       </div>
 
-      <div class="panel no-print">
-        <h3>เว้นคนเฉพาะวัน (กันไม่ให้ลำดับซ้ำจำเจ)</h3>
-        <p class="auth-sub" style="margin-top:-6px;margin-bottom:10px;">ถ้าถึงคิวคนที่เลือกในวันที่ระบุพอดี ระบบจะข้ามคนนั้นไปให้คนถัดไปแทน แล้วหมุนต่อตามปกติ (ไม่รีเซ็ตลำดับ) เพิ่มได้หลายเงื่อนไข ใช้ก่อนกด "สุ่มหมุนเวรอัตโนมัติ"</p>
-        <div class="row-flex">
-          <div class="field grow"><label>เว้นพนักงาน</label><select id="skipStaffSelect"></select></div>
-          <div class="field"><label>วันที่ (ของเดือนนี้)</label><input type="number" id="skipDayInput" min="1" max="31" style="width:90px;"></div>
-          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-small" id="addSkipRuleBtn">+ เพิ่มเงื่อนไข</button></div>
-        </div>
-        <div id="skipRulesList" class="empty-hint" style="padding:8px 0;text-align:left;">ยังไม่มีเงื่อนไขเว้นคน</div>
+      <!-- ตัวเลือกที่ใช้ไม่บ่อย: พับเก็บไว้ -->
+      <div class="sched-options no-print">
+        <details class="panel opt-panel" id="randomOptionsPanel">
+          <summary>⚙️ ตัวเลือกการสุ่ม <span class="opt-count" id="randomOptsCount"></span></summary>
+          <div class="opt-body">
+            <div class="field"><label>ให้ใครได้เวรแรก (วันที่ 1 ช่วง1)</label><select id="startStaffSelect"></select></div>
+            <label class="opt-sub">เว้นคนเฉพาะวัน — ถ้าถึงคิวคนนั้นในวันที่ระบุ จะข้ามไปคนถัดไปแล้วหมุนต่อปกติ</label>
+            <div class="row-flex">
+              <div class="field grow"><select id="skipStaffSelect"></select></div>
+              <div class="field"><input type="number" id="skipDayInput" min="1" max="31" placeholder="วันที่" style="width:80px;"></div>
+              <div class="field"><button class="btn btn-ghost btn-small" id="addSkipRuleBtn">+ เพิ่ม</button></div>
+            </div>
+            <div id="skipRulesList"></div>
+          </div>
+        </details>
+
+        <details class="panel opt-panel" id="printSettingsPanel">
+          <summary>📝 ตั้งค่าแบบฟอร์มพิมพ์ (จาก/ถึง/ผู้ลงนาม)</summary>
+          <div class="opt-body">
+            <div class="row-flex">
+              <div class="field grow"><label>จาก</label><input type="text" id="pfOrgFrom"></div>
+              <div class="field grow"><label>ถึง</label><input type="text" id="pfOrgTo"></div>
+            </div>
+            <div class="row-flex">
+              <div class="field grow"><label>เรียน (หัวเรื่องบน)</label><input type="text" id="pfAddressee"></div>
+              <div class="field grow"><label>ชื่อหน่วยงาน (ของ กฟส. ...)</label><input type="text" id="pfOfficeLine"></div>
+            </div>
+            <div class="field"><label>ข้อความชี้แจง</label><input type="text" id="pfBodyText"></div>
+            <div class="row-flex">
+              <div class="field grow"><label>เรียน (ท้ายฟอร์ม ซ้าย)</label><input type="text" id="pfFooterLeftAddressee"></div>
+              <div class="field grow"><label>วัตถุประสงค์ (ท้ายฟอร์ม ซ้าย)</label><input type="text" id="pfFooterLeftPurpose"></div>
+            </div>
+            <div class="row-flex">
+              <div class="field grow"><label>ชื่อผู้ลงนาม (ซ้าย)</label><input type="text" id="pfFooterLeftSignerName"></div>
+              <div class="field grow"><label>ตำแหน่งผู้ลงนาม (ซ้าย)</label><input type="text" id="pfFooterLeftSignerTitle"></div>
+            </div>
+            <div class="row-flex">
+              <div class="field grow"><label>รายชื่อสำเนาถึง (ขวา)</label><input type="text" id="pfFooterRightDistribution"></div>
+              <div class="field grow"><label>คำอนุมัติ (ขวา)</label><input type="text" id="pfFooterRightApproval"></div>
+            </div>
+            <button class="btn btn-primary btn-small" id="savePrintSettingsBtn" style="width:auto;">บันทึกการตั้งค่าแบบฟอร์ม</button>
+          </div>
+        </details>
       </div>
 
-      <details class="panel no-print" id="printSettingsPanel">
-        <summary style="cursor:pointer;font-weight:600;color:var(--teal-900);">⚙️ ตั้งค่าแบบฟอร์มพิมพ์ราชการ (จาก/ถึง/ผู้ลงนาม)</summary>
-        <div class="row-flex" style="margin-top:14px;">
-          <div class="field grow"><label>จาก</label><input type="text" id="pfOrgFrom"></div>
-          <div class="field grow"><label>ถึง</label><input type="text" id="pfOrgTo"></div>
-        </div>
-        <div class="row-flex">
-          <div class="field grow"><label>เรียน (หัวเรื่องบน)</label><input type="text" id="pfAddressee"></div>
-          <div class="field grow"><label>ชื่อหน่วยงาน (ของ กฟส. ...)</label><input type="text" id="pfOfficeLine"></div>
-        </div>
-        <div class="field"><label>ข้อความชี้แจง</label><input type="text" id="pfBodyText" style="width:100%;"></div>
-        <div class="row-flex">
-          <div class="field grow"><label>เรียน (ท้ายฟอร์ม ซ้าย)</label><input type="text" id="pfFooterLeftAddressee"></div>
-          <div class="field grow"><label>วัตถุประสงค์ (ท้ายฟอร์ม ซ้าย)</label><input type="text" id="pfFooterLeftPurpose"></div>
-        </div>
-        <div class="row-flex">
-          <div class="field grow"><label>ชื่อผู้ลงนาม (ซ้าย)</label><input type="text" id="pfFooterLeftSignerName"></div>
-          <div class="field grow"><label>ตำแหน่งผู้ลงนาม (ซ้าย)</label><input type="text" id="pfFooterLeftSignerTitle"></div>
-        </div>
-        <div class="row-flex">
-          <div class="field grow"><label>รายชื่อสำเนาถึง (ขวา)</label><input type="text" id="pfFooterRightDistribution"></div>
-          <div class="field grow"><label>คำอนุมัติ (ขวา)</label><input type="text" id="pfFooterRightApproval"></div>
-        </div>
-        <button class="btn btn-primary btn-small" id="savePrintSettingsBtn">บันทึกการตั้งค่าแบบฟอร์ม</button>
-      </details>
       <div class="panel" id="scheduleGridPanel">
         <div class="sched-scroll">
-          <div id="scheduleGrid" class="empty-hint">เลือกกลุ่มและเดือน แล้วกดสุ่มหมุนเวรอัตโนมัติ</div>
+          <div id="scheduleGrid" class="empty-hint">เลือกกลุ่มและเดือน แล้วกดสุ่มหมุนเวร</div>
         </div>
         <div class="legend no-print">
-          <span><span class="swatch" style="background:#12554E;"></span>เสาร์-อาทิตย์</span>
-          <span><span class="swatch" style="background:#8A5B18;"></span>วันหยุด</span>
-          <span><span class="swatch" style="background:#EFEAD9;"></span>สลับสีตามพนักงานแต่ละคน</span>
-          <span><span class="swatch" style="background:#F1EFE9;"></span>· = ช่วงที่ไม่ต้องจัดเวรวันนั้น</span>
+          <span><span class="swatch" style="background:#D9EAF5;"></span>เสาร์-อาทิตย์</span>
+          <span><span class="swatch" style="background:#FFD98A;"></span>วันหยุด</span>
           <span><span class="swatch" style="background:#fff;box-shadow:inset 0 0 0 2px #D97706;"></span>ต่างจากฉบับเสนอลงนาม</span>
           <span><span class="swatch" style="background:#FDE7C8;"></span>คนจากชุดอื่นที่มาแลกเวร</span>
+          <span>· = ช่วงที่ไม่ต้องจัดเวร</span>
+          <span title="แต่ละช่วงในแต่ละวันมีได้คนเดียว คลิกคนใหม่จะแทนที่คนเดิม — ชุดพนักงานอยู่เวร วันธรรมดาเปิดช่วง1/ช่วง3 ส่วนเสาร์-อาทิตย์/วันหยุดเปิดครบ 3 ช่วง">ⓘ คลิกช่องเพื่อใส่/เอา X ออก</span>
         </div>
-        <p class="auth-sub no-print" style="margin-top:6px;">คลิกที่ช่องของพนักงานเพื่อทำเครื่องหมาย X ว่าอยู่เวรช่วงนั้น (แต่ละช่วงในแต่ละวันมีได้คนเดียว คลิกคนใหม่จะแทนที่คนเดิมอัตโนมัติ) — กลุ่มพนักงานอยู่เวร วันธรรมดาเปิดเฉพาะช่วง1และช่วง3 ส่วนวันเสาร์-อาทิตย์/วันหยุดเปิดครบ 3 ช่วง คอลัมน์วันที่/วันจะติดอยู่ด้านซ้ายเสมอตอนเลื่อนดู</p>
       </div>
     </section>
 
@@ -1086,7 +1130,8 @@ async function onScheduleTabSelect(groupId) {
 }
 function renderSkipRulesList(staffList) {
   const box = document.getElementById("skipRulesList");
-  if (!scheduleSkipRules.length) { box.innerHTML = `<div class="empty-hint" style="text-align:left;">ยังไม่มีเงื่อนไขเว้นคน</div>`; return; }
+  document.getElementById("randomOptsCount").textContent = scheduleSkipRules.length ? `· เว้นคน ${scheduleSkipRules.length} เงื่อนไข` : "";
+  if (!scheduleSkipRules.length) { box.innerHTML = `<div style="font-size:12.5px;color:var(--ink-soft);">ยังไม่มีเงื่อนไขเว้นคน</div>`; return; }
   box.innerHTML = scheduleSkipRules.map((r, i) => {
     const staff = staffList.find((s) => s.id === r.staffId);
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px;">
@@ -1129,13 +1174,42 @@ async function renderOriginalStatus() {
     if (o && (!latest || o.lockedAt > latest.lockedAt)) latest = o;
   }
   if (!latest) {
-    box.innerHTML = "ยังไม่ได้บันทึกฉบับเสนอลงนามของเดือนนี้ — ควรกดบันทึกหลังจัดตารางเสร็จและก่อนส่งเซ็น (ถ้าลืม ระบบจะบันทึกให้เองอัตโนมัติตอนอนุมัติแลกเวรครั้งแรกของเดือน)";
+    box.className = "orig-pill";
+    box.textContent = "ยังไม่บันทึก";
+    box.title = "ควรกดบันทึกหลังจัดตารางเสร็จและก่อนส่งเซ็น (ถ้าลืม ระบบจะบันทึกให้เองตอนอนุมัติแลกเวรครั้งแรกของเดือน)";
     return;
   }
   const t = new Date(latest.lockedAt);
-  const when = `${t.getDate()} ${THAI_MONTHS[t.getMonth()]} ${t.getFullYear() + 543} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")} น.`;
-  box.innerHTML = `📌 มีฉบับเสนอลงนามแล้ว บันทึกเมื่อ ${when}${latest.reason === "auto-before-swap" ? " (ระบบบันทึกให้อัตโนมัติก่อนอนุมัติแลกเวรครั้งแรก)" : (latest.lockedBy ? " โดย " + escapeHtml(latest.lockedBy) : "")} — ช่องที่มีกรอบสีส้มในตารางคือช่องที่ต่างจากฉบับนี้`;
+  box.className = "orig-pill locked";
+  box.textContent = `✓ บันทึกแล้ว ${formatDateTime(latest.lockedAt)}`;
+  box.title = `บันทึกเมื่อ ${t.getDate()} ${THAI_MONTHS[t.getMonth()]} ${t.getFullYear() + 543}`
+    + (latest.reason === "auto-before-swap" ? " (ระบบบันทึกให้อัตโนมัติก่อนอนุมัติแลกเวรครั้งแรก)" : (latest.lockedBy ? " โดย " + latest.lockedBy : ""))
+    + " — ช่องที่มีกรอบสีส้มในตารางคือช่องที่ต่างจากฉบับนี้";
 }
+
+// ---------- ล้างตารางเวร ----------
+const clearMenu = document.getElementById("clearScheduleMenu");
+document.getElementById("clearScheduleMenuBtn").onclick = (e) => { e.stopPropagation(); clearMenu.classList.toggle("hidden"); };
+document.addEventListener("click", () => clearMenu.classList.add("hidden"));
+async function clearSchedules(groupIds, label) {
+  const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const monthLabel = `${THAI_MONTHS[m - 1]} ${y + 543}`;
+  let hasOriginal = false;
+  for (const id of groupIds) { if (await loadOriginalSchedule(id, yyyyMm)) { hasOriginal = true; break; } }
+  const msg = `ล้างตารางเวร ${label} ของเดือน ${monthLabel} ให้ว่างทั้งหมด?\n\n`
+    + (hasOriginal ? "• ฉบับเสนอลงนามที่บันทึกไว้จะยังอยู่ ไม่ถูกลบ\n• ผลการแลกเวรที่อนุมัติแล้วในตารางนี้จะหายไปด้วย\n" : "")
+    + "การล้างย้อนกลับไม่ได้";
+  if (!confirm(msg)) return;
+  for (const id of groupIds) await deleteDoc(doc(db, "schedules", scheduleId(id, yyyyMm)));
+  renderScheduleGrid();
+}
+document.getElementById("clearThisGroupBtn").onclick = () => {
+  if (!activeScheduleGroupId) return;
+  const g = allGroups.find((x) => x.id === activeScheduleGroupId);
+  clearSchedules([activeScheduleGroupId], `"${g ? g.name : "ชุดนี้"}"`);
+};
+document.getElementById("clearAllGroupsBtn").onclick = () => clearSchedules(allGroups.map((g) => g.id), "ทุกชุด");
 document.getElementById("saveSlotsBtn").onclick = async () => {
   if (!activeScheduleGroupId) return;
   const slots = Number(document.getElementById("slotsPerDayInput").value) || 1;
