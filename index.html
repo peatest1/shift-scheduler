@@ -865,21 +865,34 @@ async function handleAuthUser(user) {
 
   document.getElementById("authScreen").classList.add("hidden");
   document.getElementById("appScreen").classList.remove("hidden");
-  document.getElementById("whoBox").textContent = (currentRole === "admin" ? "แอดมิน" : "พนักงาน") + " · " + user.email;
-  document.querySelectorAll(".admin-only").forEach((el) => el.style.display = currentRole === "admin" ? "" : "none");
-  document.querySelectorAll(".staff-only").forEach((el) => el.style.display = currentRole === "staff" ? "" : "none");
 
   if (currentRole === "admin") await ensureDefaultGroups();
   allGroups = await getGroups();
 
-  if (currentRole === "staff") {
-    currentStaffProfile = null;
-    const empId = userDoc.data().empId;
+  // หาข้อมูลพนักงานที่ผูกกับบัญชีนี้ — ทั้งพนักงานและแอดมิน (แอดมินที่อยู่เวรด้วยจะได้เมนูพนักงานเพิ่ม)
+  currentStaffProfile = null;
+  const empId = userDoc.data().empId;
+  if (empId) {
     for (const g of allGroups) {
       const list = await getStaffByGroup(g.id);
       const found = list.find((s) => s.empId === empId);
       if (found) { currentStaffProfile = { ...found, groupName: g.name }; break; }
     }
+  }
+  // แอดมินที่ยังไม่ได้ผูกกับรายชื่อพนักงาน: ผูกให้อัตโนมัติ เพื่อให้คนอื่นส่งคำขอแลกเวรมาหาได้
+  if (currentRole === "admin" && currentStaffProfile && !currentStaffProfile.linkedUid) {
+    try {
+      await updateDoc(doc(db, "staff", currentStaffProfile.id), { linkedUid: user.uid });
+      currentStaffProfile.linkedUid = user.uid;
+    } catch (e) { /* ไม่ร้ายแรง — ยังใช้งานส่วนอื่นได้ */ }
+  }
+  const isStaffToo = !!currentStaffProfile;
+  document.getElementById("whoBox").textContent =
+    (currentRole === "admin" ? (isStaffToo ? "แอดมิน + พนักงาน" : "แอดมิน") : "พนักงาน") + " · " + user.email;
+  document.querySelectorAll(".admin-only").forEach((el) => el.style.display = currentRole === "admin" ? "" : "none");
+  document.querySelectorAll(".staff-only").forEach((el) => el.style.display = (currentRole === "staff" || isStaffToo) ? "" : "none");
+
+  if (currentRole === "staff") {
     switchView("myschedule");
   } else {
     switchView("overview");
@@ -1567,8 +1580,8 @@ async function refreshSwapBadge() {
   try {
     const list = await getAllSwapRequests();
     let n = 0;
-    if (currentRole === "admin") n = list.filter((r) => r.status === "accepted").length;
-    else if (currentStaffProfile) n = list.filter((r) => r.status === "pending" && r.toStaffId === currentStaffProfile.id).length;
+    if (currentRole === "admin") n += list.filter((r) => r.status === "accepted").length;
+    if (currentStaffProfile) n += list.filter((r) => r.status === "pending" && r.toStaffId === currentStaffProfile.id).length;
     badge.textContent = n ? String(n) : "";
   } catch (e) { badge.textContent = ""; }
 }
@@ -1641,7 +1654,8 @@ async function renderSwapView() {
       actions: `<button class="btn btn-danger btn-small" data-swap-act="deny" data-id="${r.id}">ไม่อนุมัติ / ปิดคำขอ</button>`,
     })).join("") : "ไม่มีคำขอที่รออีกฝ่ายตอบ";
     bindSwapActions(allBox);
-    return;
+    // แอดมินที่เป็นพนักงานอยู่เวรด้วย ใช้ส่วนของพนักงานต่อได้เลย
+    if (!currentStaffProfile) return;
   }
 
   if (!currentStaffProfile) {
