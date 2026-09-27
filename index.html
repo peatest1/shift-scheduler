@@ -138,6 +138,35 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .cal-shift-row{font-size:19px;font-weight:700;color:#0C1210;text-align:center;padding:5px 4px;border-top:1px dashed #B7B0A0;white-space:normal;word-break:break-word;line-height:1.32;}
 .cal-shift-row.dash{color:#8A8378;font-weight:400;font-size:16px;}
 .cal-holiday-name{font-size:13px;color:#7A4E10;text-align:center;padding:2px 3px 4px;font-weight:700;}
+.cal-swapped{color:#9A3412;text-decoration:underline dotted;text-underline-offset:3px;}
+.cal-swapped::after{content:"⇄";font-size:12px;margin-left:2px;vertical-align:super;}
+
+/* ---------- swap requests ---------- */
+.nav-badge{display:inline-block;min-width:18px;padding:0 5px;margin-left:6px;border-radius:9px;background:var(--amber-500);color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:18px;}
+.nav-badge:empty{display:none;}
+.swap-card{border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;background:#fff;}
+.swap-card .swap-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;margin-bottom:6px;font-size:13px;color:var(--ink-soft);}
+.swap-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;}
+.swap-side{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:6px 10px;}
+.swap-side small{display:block;color:var(--ink-soft);font-size:12px;}
+.swap-arrow{font-size:18px;color:var(--teal-700);font-weight:700;}
+.swap-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+.swap-reason{font-size:13px;color:var(--ink-soft);margin-top:6px;}
+.swap-warn{font-size:12.5px;color:var(--danger);margin-top:6px;}
+.status-pill{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:10px;font-weight:600;}
+.st-pending{background:#FBF0DC;color:#8A5B18;}
+.st-accepted{background:#DDEBF7;color:#1F4E79;}
+.st-approved{background:#E1F0E7;color:var(--ok);}
+.st-rejected,.st-denied,.st-invalid{background:#F7E3DE;color:var(--danger);}
+.st-cancelled{background:#ECEAE4;color:#6B6B6B;}
+.btn-ok{background:var(--ok);color:#fff;}
+.btn-danger{background:none;border:1px solid var(--danger);color:var(--danger);}
+.history-table td{text-align:left;}
+.history-table td.c{text-align:center;}
+.orig-status{font-size:13px;padding:8px 10px;border-radius:var(--radius);background:var(--amber-100);color:var(--teal-900);margin-top:10px;}
+.sched-table td.changed{box-shadow:inset 0 0 0 2px #D97706;}
+.sched-table th.guest{background:#FDE7C8 !important;}
+.official-table th.pf-guest{background:#F3E3C3;}
 
 /* ---------- official duty-roster print form ---------- */
 #printFormArea{display:none;}
@@ -247,6 +276,8 @@ body.printing-form #printFormArea{display:block;}
     <div class="nav-item admin-only" data-view="holidays">ปฏิทิน / วันหยุด</div>
     <div class="nav-item admin-only" data-view="schedule">จัดตารางเวร</div>
     <div class="nav-item staff-only" data-view="myschedule">ตารางเวรของฉัน</div>
+    <div class="nav-item" data-view="swap">แลกเวร<span class="nav-badge" id="swapBadge"></span></div>
+    <div class="nav-item" data-view="swaphistory">ประวัติการแลกเวร</div>
     <div class="sidebar-foot">
       <div class="who" id="whoBox">กำลังโหลด...</div>
       <button class="btn btn-ghost btn-small" id="logoutBtn" style="width:100%;">ออกจากระบบ</button>
@@ -313,9 +344,23 @@ body.printing-form #printFormArea{display:block;}
           <div class="field grow"><label>เริ่มต้นที่คนไหนก่อน (ชุดนี้)</label><select id="startStaffSelect"></select></div>
           <div class="field"><label>&nbsp;</label><button class="btn btn-ghost btn-small" id="saveSlotsBtn">บันทึกค่านี้</button></div>
           <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="generateScheduleBtn">🔄 สุ่มหมุนเวรอัตโนมัติ</button></div>
-          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printScheduleBtn">🖨️ พิมพ์แบบฟอร์มราชการ (3 ชุด)</button></div>
         </div>
         <p class="auth-sub" style="margin-top:8px;">การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือกทั้งหมด ควรทำก่อนแก้ไขมือ — เลือก "เริ่มต้นที่คนไหนก่อน" เพื่อกำหนดว่าให้ใครได้เวรแรกของวันที่ 1 ช่วง1 ก่อนกดสุ่ม</p>
+      </div>
+
+      <div class="panel no-print">
+        <h3>ฉบับเสนอลงนาม และการพิมพ์</h3>
+        <div class="row-flex">
+          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="lockOriginalBtn">📌 บันทึกเป็นฉบับเสนอลงนาม (ทุกชุด เดือนนี้)</button></div>
+          <div class="field"><label>ฉบับที่จะพิมพ์</label>
+            <select id="printVersionSelect" style="padding:9px 10px;border:1px solid var(--line);border-radius:var(--radius);font-family:inherit;">
+              <option value="current">ฉบับปัจจุบัน (รวมการแลกเวรแล้ว)</option>
+              <option value="original">ฉบับเสนอลงนาม (ก่อนแลกเวร)</option>
+            </select>
+          </div>
+          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printScheduleBtn">🖨️ พิมพ์แบบฟอร์มราชการ (3 ชุด)</button></div>
+        </div>
+        <div id="originalStatusBox" class="orig-status">กำลังตรวจสอบ...</div>
       </div>
 
       <div class="panel no-print">
@@ -363,6 +408,8 @@ body.printing-form #printFormArea{display:block;}
           <span><span class="swatch" style="background:#8A5B18;"></span>วันหยุด</span>
           <span><span class="swatch" style="background:#EFEAD9;"></span>สลับสีตามพนักงานแต่ละคน</span>
           <span><span class="swatch" style="background:#F1EFE9;"></span>· = ช่วงที่ไม่ต้องจัดเวรวันนั้น</span>
+          <span><span class="swatch" style="background:#fff;box-shadow:inset 0 0 0 2px #D97706;"></span>ต่างจากฉบับเสนอลงนาม</span>
+          <span><span class="swatch" style="background:#FDE7C8;"></span>คนจากชุดอื่นที่มาแลกเวร</span>
         </div>
         <p class="auth-sub no-print" style="margin-top:6px;">คลิกที่ช่องของพนักงานเพื่อทำเครื่องหมาย X ว่าอยู่เวรช่วงนั้น (แต่ละช่วงในแต่ละวันมีได้คนเดียว คลิกคนใหม่จะแทนที่คนเดิมอัตโนมัติ) — กลุ่มพนักงานอยู่เวร วันธรรมดาเปิดเฉพาะช่วง1และช่วง3 ส่วนวันเสาร์-อาทิตย์/วันหยุดเปิดครบ 3 ช่วง คอลัมน์วันที่/วันจะติดอยู่ด้านซ้ายเสมอตอนเลื่อนดู</p>
       </div>
@@ -372,6 +419,55 @@ body.printing-form #printFormArea{display:block;}
       <div class="page-head"><div><h2>ตารางเวรของฉัน</h2><p>รายการเวรที่คุณได้รับมอบหมาย</p></div></div>
       <div class="panel"><div class="field" style="max-width:220px;"><label>เดือน</label><input type="month" id="myScheduleMonthInput"></div></div>
       <div class="panel scroll-x"><div id="myScheduleBox" class="empty-hint">เลือกเดือนเพื่อดูตารางเวร</div></div>
+    </section>
+
+    <section class="view" id="view-swap">
+      <div class="page-head"><div><h2>แลกเวร</h2><p>ส่งคำขอ → เพื่อนตอบรับ → แอดมินอนุมัติ → ตารางเวรและปฏิทินเวรอัปเดตให้อัตโนมัติ</p></div></div>
+
+      <div class="panel admin-only" id="swapAdminPanel">
+        <h3>รอแอดมินอนุมัติ</h3>
+        <div id="swapAdminBox" class="empty-hint">กำลังโหลด...</div>
+      </div>
+
+      <div class="panel staff-only">
+        <h3>ส่งคำขอแลกเวร</h3>
+        <div class="row-flex">
+          <div class="field" style="min-width:200px;"><label>ประเภทคำขอ</label>
+            <select id="swapTypeSelect">
+              <option value="swap">แลกเวร (สลับกันคนละเวร)</option>
+              <option value="cover">ขอให้อยู่แทน (อีกฝ่ายรับเวรไปฝ่ายเดียว)</option>
+            </select>
+          </div>
+          <div class="field grow"><label>เวรของฉันที่ต้องการแลก</label><select id="swapMyShiftSelect"></select></div>
+        </div>
+        <div class="row-flex">
+          <div class="field grow"><label>แลกกับ</label><select id="swapTargetStaffSelect"></select></div>
+          <div class="field grow" id="swapTargetShiftField"><label>เวรของอีกฝ่ายที่จะรับมา</label><select id="swapTargetShiftSelect"></select></div>
+        </div>
+        <div class="field"><label>เหตุผล (ไม่บังคับ)</label><input type="text" id="swapReasonInput" maxlength="200" placeholder="เช่น ติดธุระต่างจังหวัด"></div>
+        <button class="btn btn-primary" id="swapSubmitBtn" style="width:auto;">ส่งคำขอ</button>
+        <p class="auth-sub" style="margin-top:10px;margin-bottom:0;">แสดงเฉพาะเวรที่ยังไม่ถึงวัน ของเดือนนี้และเดือนหน้า · แลกข้ามชุดได้ · อีกฝ่ายต้องสมัครสมาชิกในระบบแล้ว</p>
+      </div>
+
+      <div class="panel staff-only">
+        <h3>คำขอที่รอฉันตอบ</h3>
+        <div id="swapIncomingBox" class="empty-hint">กำลังโหลด...</div>
+      </div>
+
+      <div class="panel staff-only">
+        <h3>คำขอที่ฉันส่ง / เกี่ยวกับฉัน</h3>
+        <div id="swapMineBox" class="empty-hint">กำลังโหลด...</div>
+      </div>
+
+      <div class="panel admin-only">
+        <h3>คำขอทั้งหมดที่ยังไม่จบ</h3>
+        <div id="swapAdminAllBox" class="empty-hint">กำลังโหลด...</div>
+      </div>
+    </section>
+
+    <section class="view" id="view-swaphistory">
+      <div class="page-head"><div><h2>ประวัติการแลกเวร</h2><p>รายการแลกเวรที่อนุมัติแล้ว เรียงล่าสุดก่อน — สมาชิกทุกคนเห็นเหมือนกัน</p></div></div>
+      <div class="panel scroll-x"><div id="swapHistoryBox" class="empty-hint">กำลังโหลด...</div></div>
     </section>
   </main>
 </div>
@@ -385,11 +481,11 @@ body.printing-form #printFormArea{display:block;}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signOut,
-  signInWithEmailAndPassword, createUserWithEmailAndPassword
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, deleteUser
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, getDocs, query, where, orderBy, writeBatch
+  collection, getDocs, query, where, orderBy, writeBatch, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -455,6 +551,7 @@ function activeShiftIndexesForDay(group, dateObj, isHoliday) {
 }
 
 let currentRole = null;
+let currentUid = null;
 let currentStaffProfile = null;
 let allGroups = [];
 let holidaysMap = {};
@@ -462,6 +559,8 @@ let activeStaffGroupId = null;
 let activeScheduleGroupId = null;
 
 function todayISO(y, m, d) { return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
+function escapeHtml(str) { return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+const THAI_MONTHS_SHORT = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 function currentYyyyMm() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`; }
 function daysInMonth(yyyyMm) { const [y, m] = yyyyMm.split("-").map(Number); return new Date(y, m, 0).getDate(); }
 
@@ -617,6 +716,38 @@ async function updateCell(groupId, yyyyMm, day, slotIndex, staffId) {
   await saveSchedule(groupId, yyyyMm, current);
 }
 
+// ---------- ฉบับเสนอลงนาม (สำเนาตารางก่อนแลกเวร) ----------
+// เก็บแยกไว้ใน scheduleOriginals/{groupId}_{yyyy-mm} ไม่ถูกแก้ตามการแลกเวร
+async function loadOriginalSchedule(groupId, yyyyMm) {
+  const snap = await getDoc(doc(db, "scheduleOriginals", scheduleId(groupId, yyyyMm)));
+  return snap.exists() ? snap.data() : null;
+}
+async function snapshotOriginalsForMonth(yyyyMm, reason) {
+  if (!allGroups.length) allGroups = await getGroups();
+  let count = 0;
+  for (const g of allGroups) {
+    const assignments = await loadSchedule(g.id, yyyyMm);
+    if (!assignments) continue;
+    await setDoc(doc(db, "scheduleOriginals", scheduleId(g.id, yyyyMm)), {
+      assignments, lockedAt: Date.now(), lockedBy: auth.currentUser ? auth.currentUser.email : null, reason: reason || "manual",
+    });
+    count++;
+  }
+  return count;
+}
+async function monthHasOriginal(yyyyMm) {
+  if (!allGroups.length) allGroups = await getGroups();
+  for (const g of allGroups) { if (await loadOriginalSchedule(g.id, yyyyMm)) return true; }
+  return false;
+}
+// หาพนักงานที่ไม่ได้อยู่ในชุดนี้ แต่มีชื่อในตาราง (มาจากการแลกเวรข้ามชุด) เพื่อเพิ่มเป็นคอลัมน์ต่อท้าย
+function findGuestStaff(staffList, allStaffList, ...assignmentMaps) {
+  const inGroup = new Set(staffList.map((s) => s.id));
+  const guestIds = new Set();
+  assignmentMaps.forEach((a) => Object.values(a || {}).forEach((slots) => (slots || []).forEach((id) => { if (id && !inGroup.has(id)) guestIds.add(id); })));
+  return allStaffList.filter((s) => guestIds.has(s.id)).map((s) => ({ ...s, isGuest: true }));
+}
+
 // ==========================================================================
 // 6) หน้าล็อกอิน / สมัครสมาชิก
 // ==========================================================================
@@ -637,8 +768,11 @@ function friendlyError(err) {
   if (code.includes("email-already-in-use")) return "อีเมลนี้ถูกใช้งานแล้ว";
   if (code.includes("weak-password")) return "รหัสผ่านสั้นเกินไป";
   if (code.includes("invalid-email")) return "รูปแบบอีเมลไม่ถูกต้อง";
+  if (code.includes("permission-denied")) return "ไม่มีสิทธิ์ทำรายการนี้";
   return err.message || "เกิดข้อผิดพลาด";
 }
+// ระหว่างสมัครสมาชิก ยังไม่ให้ auth guard ทำงาน (เพราะเอกสาร users ยังเขียนไม่เสร็จ จะโดน signOut)
+let registrationInProgress = false;
 
 loginForm.addEventListener("submit", async (e) => {
   e.preventDefault(); clearMsg();
@@ -658,21 +792,42 @@ registerForm.addEventListener("submit", async (e) => {
 
   if (isAdmin) {
     if (adminKey !== ADMIN_SETUP_KEY) { showMsg("รหัสตั้งค่าระบบไม่ถูกต้อง", true); return; }
+    registrationInProgress = true;
+    let adminCred = null;
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "users", cred.user.uid), { role: "admin", empId: empId || null, createdAt: Date.now() });
-    } catch (err) { showMsg("สมัครไม่สำเร็จ: " + friendlyError(err), true); }
+      adminCred = await createUserWithEmailAndPassword(auth, email, password);
+      await setDoc(doc(db, "users", adminCred.user.uid), { role: "admin", empId: empId || null, createdAt: Date.now() });
+    } catch (err) {
+      if (adminCred) await deleteUser(adminCred.user).catch(() => signOut(auth));
+      showMsg("สมัครไม่สำเร็จ: " + friendlyError(err) + (String(err.code || "").includes("permission-denied") ? " — ให้สมัครแบบพนักงานก่อน แล้วให้แอดมินเดิมเปลี่ยนสิทธิ์เป็นแอดมินใน Firebase Console" : ""), true);
+    }
+    registrationInProgress = false;
+    await handleAuthUser(auth.currentUser);
     return;
   }
+  // สร้างบัญชีก่อน แล้วค่อยค้นรหัสพนักงาน (รายชื่อพนักงานอ่านได้เฉพาะคนที่ล็อกอินแล้ว) — ไม่เจอก็ลบบัญชีทิ้ง
+  registrationInProgress = true;
+  let cred = null;
   try {
+    cred = await createUserWithEmailAndPassword(auth, email, password);
     const snap = await getDocs(query(collection(db, "staff"), where("empId", "==", empId)));
-    if (snap.empty) { showMsg("ไม่พบรหัสพนักงานนี้ในระบบ กรุณาให้แอดมินเพิ่มชื่อของคุณก่อน", true); return; }
     const staffDoc = snap.docs[0];
-    if (staffDoc.data().linkedUid) { showMsg("รหัสพนักงานนี้ถูกใช้สมัครสมาชิกไปแล้ว", true); return; }
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    await setDoc(doc(db, "users", cred.user.uid), { role: "staff", empId, createdAt: Date.now() });
-    await updateDoc(doc(db, "staff", staffDoc.id), { linkedUid: cred.user.uid });
-  } catch (err) { showMsg("สมัครไม่สำเร็จ: " + friendlyError(err), true); }
+    let problem = null;
+    if (!staffDoc) problem = "ไม่พบรหัสพนักงานนี้ในระบบ กรุณาให้แอดมินเพิ่มชื่อของคุณก่อน";
+    else if (staffDoc.data().linkedUid) problem = "รหัสพนักงานนี้ถูกใช้สมัครสมาชิกไปแล้ว";
+    if (problem) {
+      await deleteUser(cred.user).catch(() => signOut(auth));
+      showMsg(problem, true);
+    } else {
+      await setDoc(doc(db, "users", cred.user.uid), { role: "staff", empId, createdAt: Date.now() });
+      await updateDoc(doc(db, "staff", staffDoc.id), { linkedUid: cred.user.uid });
+    }
+  } catch (err) {
+    if (cred) await deleteUser(cred.user).catch(() => signOut(auth));
+    showMsg("สมัครไม่สำเร็จ: " + friendlyError(err), true);
+  }
+  registrationInProgress = false;
+  await handleAuthUser(auth.currentUser);
 });
 
 document.getElementById("logoutBtn").onclick = () => signOut(auth);
@@ -688,12 +843,16 @@ function switchView(name) {
   if (name === "calendar") renderCalendar();
   if (name === "holidays") renderHolidayList();
   if (name === "myschedule") renderMySchedule();
+  if (name === "swap") renderSwapView();
+  if (name === "swaphistory") renderSwapHistory();
+  if (currentRole) refreshSwapBadge();
 }
 
 // ==========================================================================
 // 8) auth guard หลัก — สลับหน้าจอ ไม่ redirect ข้ามไฟล์
 // ==========================================================================
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, (user) => { if (!registrationInProgress) handleAuthUser(user); });
+async function handleAuthUser(user) {
   if (!user) {
     document.getElementById("authScreen").classList.remove("hidden");
     document.getElementById("appScreen").classList.add("hidden");
@@ -702,6 +861,7 @@ onAuthStateChanged(auth, async (user) => {
   const userDoc = await getDoc(doc(db, "users", user.uid));
   if (!userDoc.exists()) { await signOut(auth); return; }
   currentRole = userDoc.data().role;
+  currentUid = user.uid;
 
   document.getElementById("authScreen").classList.add("hidden");
   document.getElementById("appScreen").classList.remove("hidden");
@@ -713,6 +873,7 @@ onAuthStateChanged(auth, async (user) => {
   allGroups = await getGroups();
 
   if (currentRole === "staff") {
+    currentStaffProfile = null;
     const empId = userDoc.data().empId;
     for (const g of allGroups) {
       const list = await getStaffByGroup(g.id);
@@ -732,7 +893,8 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById("myScheduleMonthInput").value = currentYyyyMm();
   document.getElementById("calendarMonthInput").value = currentYyyyMm();
   if (currentRole === "admin") await populatePrintSettingsForm();
-});
+  refreshSwapBadge();
+}
 
 async function populatePrintSettingsForm() {
   const s = await getPrintFormSettings();
@@ -907,6 +1069,7 @@ async function onScheduleTabSelect(groupId) {
   scheduleSkipRules = [];
   renderSkipRulesList(staffList);
   renderScheduleGrid();
+  renderOriginalStatus();
 }
 function renderSkipRulesList(staffList) {
   const box = document.getElementById("skipRulesList");
@@ -930,8 +1093,36 @@ document.getElementById("addSkipRuleBtn").onclick = async () => {
   const staffList = await getStaffByGroup(activeScheduleGroupId);
   renderSkipRulesList(staffList);
 };
-document.getElementById("scheduleMonthInput").onchange = renderScheduleGrid;
-document.getElementById("printScheduleBtn").onclick = () => buildAndPrintDutyForm();
+document.getElementById("scheduleMonthInput").onchange = () => { renderScheduleGrid(); renderOriginalStatus(); };
+document.getElementById("printScheduleBtn").onclick = () => buildAndPrintDutyForm(document.getElementById("printVersionSelect").value);
+document.getElementById("lockOriginalBtn").onclick = async () => {
+  const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
+  const exists = await monthHasOriginal(yyyyMm);
+  const msg = exists
+    ? "เดือนนี้มีฉบับเสนอลงนามอยู่แล้ว ถ้าบันทึกใหม่ ฉบับเดิมจะถูกแทนที่ด้วยตารางปัจจุบัน (ซึ่งอาจรวมการแลกเวรไปแล้ว)\n\nยืนยันบันทึกทับหรือไม่?"
+    : "บันทึกตารางปัจจุบันของทุกชุดในเดือนนี้เป็น \"ฉบับเสนอลงนาม\"\nฉบับนี้จะไม่เปลี่ยนตามการแลกเวร ใช้พิมพ์ย้อนหลังได้ตลอด\n\nยืนยันหรือไม่?";
+  if (!confirm(msg)) return;
+  const count = await snapshotOriginalsForMonth(yyyyMm, "manual");
+  alert(count ? `บันทึกฉบับเสนอลงนามแล้ว ${count} ชุด` : "เดือนนี้ยังไม่มีตารางเวรให้บันทึก");
+  renderOriginalStatus(); renderScheduleGrid();
+};
+async function renderOriginalStatus() {
+  const box = document.getElementById("originalStatusBox");
+  const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
+  if (!allGroups.length) allGroups = await getGroups();
+  let latest = null;
+  for (const g of allGroups) {
+    const o = await loadOriginalSchedule(g.id, yyyyMm);
+    if (o && (!latest || o.lockedAt > latest.lockedAt)) latest = o;
+  }
+  if (!latest) {
+    box.innerHTML = "ยังไม่ได้บันทึกฉบับเสนอลงนามของเดือนนี้ — ควรกดบันทึกหลังจัดตารางเสร็จและก่อนส่งเซ็น (ถ้าลืม ระบบจะบันทึกให้เองอัตโนมัติตอนอนุมัติแลกเวรครั้งแรกของเดือน)";
+    return;
+  }
+  const t = new Date(latest.lockedAt);
+  const when = `${t.getDate()} ${THAI_MONTHS[t.getMonth()]} ${t.getFullYear() + 543} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")} น.`;
+  box.innerHTML = `📌 มีฉบับเสนอลงนามแล้ว บันทึกเมื่อ ${when}${latest.reason === "auto-before-swap" ? " (ระบบบันทึกให้อัตโนมัติก่อนอนุมัติแลกเวรครั้งแรก)" : (latest.lockedBy ? " โดย " + escapeHtml(latest.lockedBy) : "")} — ช่องที่มีกรอบสีส้มในตารางคือช่องที่ต่างจากฉบับนี้`;
+}
 document.getElementById("saveSlotsBtn").onclick = async () => {
   if (!activeScheduleGroupId) return;
   const slots = Number(document.getElementById("slotsPerDayInput").value) || 1;
@@ -950,6 +1141,9 @@ document.getElementById("generateScheduleBtn").onclick = async () => {
   const startStaffId = document.getElementById("startStaffSelect").value;
   const startIndex = startStaffId ? staffList.findIndex((s) => s.id === startStaffId) : undefined;
   if (!confirm("การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือก ยืนยันหรือไม่?")) return;
+  if (await loadOriginalSchedule(activeScheduleGroupId, yyyyMm)) {
+    if (!confirm("⚠️ เดือนนี้บันทึกฉบับเสนอลงนามไปแล้ว และอาจมีการแลกเวรที่อนุมัติแล้ว การสุ่มใหม่จะล้างผลการแลกเวรในตารางปัจจุบันทั้งหมด (ฉบับเสนอลงนามยังอยู่เหมือนเดิม)\n\nยังต้องการสุ่มใหม่อยู่หรือไม่?")) return;
+  }
   const assignments = generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex >= 0 ? startIndex : undefined, scheduleSkipRules);
   await saveSchedule(activeScheduleGroupId, yyyyMm, assignments);
   renderScheduleGrid();
@@ -960,11 +1154,15 @@ async function renderScheduleGrid() {
   const box = document.getElementById("scheduleGrid");
   if (!activeScheduleGroupId) return;
   const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
-  const staffList = await getStaffByGroup(activeScheduleGroupId);
+  const ownStaff = await getStaffByGroup(activeScheduleGroupId);
   const group = allGroups.find((g) => g.id === activeScheduleGroupId) || {};
   const assignments = (await loadSchedule(activeScheduleGroupId, yyyyMm)) || {};
+  const originalDoc = await loadOriginalSchedule(activeScheduleGroupId, yyyyMm);
+  const origAssign = originalDoc ? originalDoc.assignments || {} : null;
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
-  if (!staffList.length) { box.innerHTML = `<div class="empty-hint">กลุ่มนี้ยังไม่มีพนักงาน</div>`; return; }
+  if (!ownStaff.length) { box.innerHTML = `<div class="empty-hint">กลุ่มนี้ยังไม่มีพนักงาน</div>`; return; }
+  // คนจากชุดอื่นที่แลกเวรเข้ามา จะแสดงเป็นคอลัมน์ต่อท้าย
+  const staffList = ownStaff.concat(findGuestStaff(ownStaff, await getAllStaff(), assignments));
   const numDays = daysInMonth(yyyyMm);
   const [y, m] = yyyyMm.split("-").map(Number);
   const isDuty = isDutyRosterGroup(group);
@@ -981,7 +1179,7 @@ async function renderScheduleGrid() {
   let headRow2 = "<tr>";
   staffList.forEach((s, i) => {
     const band = i % 2 === 0 ? "emp-a" : "emp-b";
-    headRow1 += `<th colspan="3" class="${band} emp-border-end">${s.name}<br><span style="font-weight:400;font-size:11px;">${s.empId}</span></th>`;
+    headRow1 += `<th colspan="3" class="${band} emp-border-end${s.isGuest ? " guest" : ""}">${escapeHtml(s.name)}<br><span style="font-weight:400;font-size:11px;">${escapeHtml(s.empId)}${s.isGuest ? " · ชุดอื่น" : ""}</span></th>`;
     headRow2 += `<th class="${band}">ช่วง1</th><th class="${band}">ช่วง2</th><th class="${band} emp-border-end">ช่วง3</th>`;
   });
   headRow1 += "</tr>"; headRow2 += "</tr>";
@@ -1001,6 +1199,7 @@ async function renderScheduleGrid() {
       ? activeShiftIndexesForDay(group, dateObj, isHoliday)
       : Array.from({ length: fixedSlots }, (_, i) => i);
     const daySlots = assignments[String(d)] || [null, null, null];
+    const origSlots = origAssign ? (origAssign[String(d)] || [null, null, null]) : null;
 
     body += `<tr class="${rowClass}"><td class="sticky-col">${d}</td><td class="sticky-col sticky-col2">${THAI_DOW[dow]}${isHoliday ? " •" : ""}</td>`;
     staffList.forEach((s, i) => {
@@ -1008,7 +1207,8 @@ async function renderScheduleGrid() {
       for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
         const active = activeIdx.includes(shiftIdx);
         const isMe = daySlots[shiftIdx] === s.id;
-        const borderClass = shiftIdx === 2 ? " emp-border-end" : "";
+        const changed = origSlots && ((origSlots[shiftIdx] === s.id) !== isMe);
+        const borderClass = (shiftIdx === 2 ? " emp-border-end" : "") + (changed ? " changed" : "");
         if (isMe) perStaffShiftTotal[s.id][shiftIdx]++;
         if (!active) {
           body += `<td class="${band}${borderClass}" style="color:#C7C2B4;">·</td>`;
@@ -1074,13 +1274,14 @@ async function renderCalendar() {
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
 
   const nicknameMap = {};
+  (await getAllStaff()).forEach((s) => nicknameMap[s.id] = (s.nickname && s.nickname.trim()) || s.name);
   const groupAssignments = [];
   for (const g of dutyGroups) {
-    const staffList = await getStaffByGroup(g.id);
-    staffList.forEach((s) => nicknameMap[s.id] = (s.nickname && s.nickname.trim()) || s.name);
     const assignments = (await loadSchedule(g.id, yyyyMm)) || {};
     groupAssignments.push(assignments);
   }
+  // ช่องที่ได้มาจากการแลกเวร (อนุมัติแล้ว) จะแสดงชื่อพร้อมเครื่องหมาย ⇄
+  const swappedKeys = await getSwappedCellKeys(yyyyMm);
 
   const [y, m] = yyyyMm.split("-").map(Number);
   const numDays = daysInMonth(yyyyMm);
@@ -1113,7 +1314,10 @@ async function renderCalendar() {
         const names = groupAssignments
           .map((a) => (a[String(d)] || [])[shiftIdx])
           .filter(Boolean)
-          .map((id) => nicknameMap[id] || "?");
+          .map((id) => {
+            const label = escapeHtml(nicknameMap[id] || "?");
+            return swappedKeys.has(`${d}_${shiftIdx}_${id}`) ? `<span class="cal-swapped" title="ได้เวรนี้จากการแลกเวร">${label}</span>` : label;
+          });
         rows += `<div class="cal-shift-row">${names.length ? names.join(" ") : "-"}</div>`;
       }
       body += `<td>
@@ -1127,33 +1331,38 @@ async function renderCalendar() {
     body += "</tr>";
   }
 
-  box.innerHTML = `<table class="cal-table">${head}${body}</table>`;
+  box.innerHTML = `<table class="cal-table">${head}${body}</table>
+    <p class="legend">ชื่อที่มีเครื่องหมาย ⇄ = ได้เวรนั้นมาจากการแลกเวรที่อนุมัติแล้ว (ดูรายละเอียดที่เมนู "ประวัติการแลกเวร")</p>`;
 }
 async function renderMySchedule() {
   const box = document.getElementById("myScheduleBox");
   if (!currentStaffProfile) { box.innerHTML = `<div class="empty-hint">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อแอดมิน</div>`; return; }
   const yyyyMm = document.getElementById("myScheduleMonthInput").value || currentYyyyMm();
-  const assignments = (await loadSchedule(currentStaffProfile.groupId, yyyyMm)) || {};
-  const numDays = daysInMonth(yyyyMm);
+  const myShifts = await getShiftsOfStaff(currentStaffProfile.id, [yyyyMm]);
+  const swappedKeys = await getSwappedCellKeys(yyyyMm);
   const [y, m] = yyyyMm.split("-").map(Number);
-  let rows = "", myCount = 0;
-  for (let d = 1; d <= numDays; d++) {
-    const daySlots = assignments[String(d)] || [];
-    const mySlots = daySlots.reduce((acc, id, i) => id === currentStaffProfile.id ? [...acc, i + 1] : acc, []);
-    if (!mySlots.length) continue;
-    myCount += mySlots.length;
+  const byDay = {};
+  myShifts.forEach((sh) => { (byDay[sh.day] = byDay[sh.day] || []).push(sh); });
+  let rows = "";
+  Object.keys(byDay).map(Number).sort((a, b) => a - b).forEach((d) => {
     const dow = new Date(y, m - 1, d).getDay();
-    rows += `<tr><td>${d}</td><td>${THAI_DOW[dow]}</td><td>${mySlots.map((s) => "ช่วง " + s).join(", ")}</td></tr>`;
-  }
-  if (!rows) { box.innerHTML = `<div class="empty-hint">ยังไม่มีตารางเวรของกลุ่ม "${currentStaffProfile.groupName}" ในเดือนนี้</div>`; return; }
-  box.innerHTML = `<p style="margin-bottom:10px;color:var(--ink-soft);font-size:13px;">กลุ่ม: ${currentStaffProfile.groupName} · รวม ${myCount} เวรในเดือนนี้</p>
+    const labels = byDay[d].sort((a, b) => a.shift - b.shift).map((sh) => {
+      const other = sh.groupId !== currentStaffProfile.groupId ? ` <span class="tag">${escapeHtml(sh.groupName)}</span>` : "";
+      const swapped = swappedKeys.has(`${d}_${sh.shift}_${currentStaffProfile.id}`) ? ` <span class="tag" style="background:#FDE7C8;">⇄ แลกมา</span>` : "";
+      return `ช่วง ${sh.shift + 1}${other}${swapped}`;
+    });
+    rows += `<tr><td>${d}</td><td>${THAI_DOW[dow]}</td><td style="text-align:left;">${labels.join(", ")}</td></tr>`;
+  });
+  if (!rows) { box.innerHTML = `<div class="empty-hint">ยังไม่มีเวรของคุณในเดือนนี้</div>`; return; }
+  box.innerHTML = `<p style="margin-bottom:10px;color:var(--ink-soft);font-size:13px;">กลุ่ม: ${escapeHtml(currentStaffProfile.groupName)} · รวม ${myShifts.length} เวรในเดือนนี้ (รวมผลการแลกเวรแล้ว)</p>
     <table><thead><tr><th>วันที่</th><th>วัน</th><th style="text-align:left;">ช่วงเวรที่ได้รับมอบหมาย</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // ==========================================================================
 // 14) แบบฟอร์มพิมพ์ราชการ (A4 แนวนอน) — ดึงข้อมูล "พนักงานอยู่เวร" ทั้ง 3 ชุด ชุดละ 1 หน้า
 // ==========================================================================
-async function buildAndPrintDutyForm() {
+async function buildAndPrintDutyForm(version) {
+  const useOriginal = version === "original";
   const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
   const [y, m] = yyyyMm.split("-").map(Number);
   const buddhistYear = y + 543;
@@ -1170,13 +1379,28 @@ async function buildAndPrintDutyForm() {
 
   let pagesHtml = "";
   let pageIndex = 0;
+  let missingOriginal = 0;
+  const allStaffList = await getAllStaff();
   for (const group of dutyGroups) {
-    const staffList = await getStaffByGroup(group.id);
-    if (!staffList.length) continue;
-    const assignments = (await loadSchedule(group.id, yyyyMm)) || {};
-    pagesHtml += buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, monthName, numDays, settings, printDateThai, pageIndex === 0);
+    const ownStaff = await getStaffByGroup(group.id);
+    if (!ownStaff.length) continue;
+    let assignments;
+    let versionNote = "";
+    if (useOriginal) {
+      const o = await loadOriginalSchedule(group.id, yyyyMm);
+      if (!o) { missingOriginal++; continue; }
+      assignments = o.assignments || {};
+    } else {
+      assignments = (await loadSchedule(group.id, yyyyMm)) || {};
+      const o = await loadOriginalSchedule(group.id, yyyyMm);
+      if (o && JSON.stringify(o.assignments || {}) !== JSON.stringify(assignments)) versionNote = "(ฉบับปรับปรุงหลังแลกเวร)";
+    }
+    const staffList = ownStaff.concat(findGuestStaff(ownStaff, allStaffList, assignments));
+    pagesHtml += buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, monthName, numDays, settings, printDateThai, pageIndex === 0, versionNote);
     pageIndex++;
   }
+  if (useOriginal && !pagesHtml) { alert("เดือนนี้ยังไม่ได้บันทึกฉบับเสนอลงนาม — กด \"📌 บันทึกเป็นฉบับเสนอลงนาม\" ก่อน"); return; }
+  if (useOriginal && missingOriginal) alert(`หมายเหตุ: มี ${missingOriginal} ชุดที่ยังไม่มีฉบับเสนอลงนาม จึงไม่ได้พิมพ์ชุดนั้น`);
   if (!pagesHtml) { alert("ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวรเลย ไม่สามารถสร้างแบบฟอร์มได้"); return; }
 
   document.getElementById("printFormArea").innerHTML = pagesHtml;
@@ -1188,10 +1412,11 @@ window.addEventListener("afterprint", () => {
   document.getElementById("printFormArea").innerHTML = "";
 });
 
-function buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, monthName, numDays, s, printDateThai, isFirstPage) {
+function buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, monthName, numDays, s, printDateThai, isFirstPage, versionNote) {
+  const gc = (st) => (st.isGuest ? ' class="pf-guest"' : "");
   const nameRow = `<tr><th rowspan="3" style="width:5.5%;">วันที่</th><th rowspan="3" style="width:4%;">วัน</th>` +
-    staffList.map((st) => `<th colspan="3">${st.name}</th>`).join("") + `</tr>`;
-  const empIdRow = `<tr>` + staffList.map((st) => `<th colspan="3">${st.empId}</th>`).join("") + `</tr>`;
+    staffList.map((st) => `<th colspan="3"${gc(st)}>${escapeHtml(st.name)}${st.isGuest ? " *" : ""}</th>`).join("") + `</tr>`;
+  const empIdRow = `<tr>` + staffList.map((st) => `<th colspan="3"${gc(st)}>${escapeHtml(st.empId)}</th>`).join("") + `</tr>`;
   const subHeadRow = `<tr>` + staffList.map(() => `<th>ช่วง1</th><th>ช่วง2</th><th>ช่วง3</th>`).join("") + `</tr>`;
 
   const totals = {}; staffList.forEach((st) => totals[st.id] = [0, 0, 0]);
@@ -1242,10 +1467,11 @@ function buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, mo
       <tr><td class="pf-meta-label">เรียน</td><td colspan="3">${s.addressee}</td></tr>
       <tr><td></td><td colspan="3">${s.bodyText}</td></tr>
     </table>
-    <p class="pf-title">ของ ${s.officeLine} ประจำเดือน ${monthName} พ.ศ. ${buddhistYear} ดังต่อไปนี้</p>
+    <p class="pf-title">ของ ${s.officeLine} ประจำเดือน ${monthName} พ.ศ. ${buddhistYear} ดังต่อไปนี้ — ${escapeHtml(group.name)} ${versionNote || ""}</p>
     <table class="official-table">
       ${nameRow}${empIdRow}${subHeadRow}${bodyRows}${totalRow}${grandRow}
     </table>
+    ${staffList.some((st) => st.isGuest) ? `<div style="font-size:9px;margin-top:2px;">* พนักงานจากชุดอื่นที่เข้ามาอยู่เวรจากการแลกเวร</div>` : ""}
     ${isFirstPage ? `<div class="pf-footer">
       <div class="pf-col">
         <div>เรียน ${s.footerLeftAddressee}</div>
@@ -1264,7 +1490,359 @@ function buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, mo
 }
 
 // ==========================================================================
-// 15) ใส่โลโก้ กฟภ. แก้ไขกระแสไฟฟ้าขัดข้อง ที่มุมซ้ายบนของแอปและหน้าล็อกอิน
+// 15) แลกเวร — ส่งคำขอ → อีกฝ่ายตอบรับ → แอดมินอนุมัติ → อัปเดตตารางเวร (และปฏิทินเวรที่อ่านจากตารางเดียวกัน)
+// สถานะ: pending (รออีกฝ่าย) → accepted (รอแอดมิน) → approved
+//        หรือ rejected (อีกฝ่ายปฏิเสธ) / cancelled (ผู้ขอยกเลิก) / denied (แอดมินไม่อนุมัติ) / invalid (ตารางเปลี่ยนไปแล้ว)
+// ==========================================================================
+const SWAP_STATUS_LABEL = {
+  pending: "รออีกฝ่ายตอบ", accepted: "รอแอดมินอนุมัติ", approved: "อนุมัติแล้ว",
+  rejected: "อีกฝ่ายปฏิเสธ", cancelled: "ยกเลิกแล้ว", denied: "ไม่อนุมัติ", invalid: "ใช้ไม่ได้ (ตารางเปลี่ยน)",
+};
+const SWAP_OPEN = ["pending", "accepted"];
+
+function shiftDateLabel(yyyyMm, day, shift) {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const dow = new Date(y, m - 1, day).getDay();
+  return `${THAI_DOW[dow]} ${day} ${THAI_MONTHS_SHORT[m - 1]} ${String(y + 543).slice(-2)} · ช่วง${shift + 1}`;
+}
+function formatDateTime(ts) {
+  if (!ts) return "-";
+  const t = new Date(ts);
+  return `${t.getDate()} ${THAI_MONTHS_SHORT[t.getMonth()]} ${String(t.getFullYear() + 543).slice(-2)} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+}
+function isPastShift(yyyyMm, day) {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return new Date(y, m - 1, day) < today;
+}
+function upcomingMonths() {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return [currentYyyyMm(), `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`];
+}
+function staffDisplayName(s) { return s.nickname ? `${s.name} (${s.nickname})` : s.name; }
+
+// เวรทั้งหมดของพนักงานคนหนึ่ง ค้นจากตารางของทุกชุด (เพราะแลกข้ามชุดแล้วเวรอาจไปอยู่ในตารางชุดอื่น)
+async function getShiftsOfStaff(staffId, months) {
+  if (!allGroups.length) allGroups = await getGroups();
+  const result = [];
+  for (const yyyyMm of months) {
+    for (const g of allGroups) {
+      const a = await loadSchedule(g.id, yyyyMm);
+      if (!a) continue;
+      Object.entries(a).forEach(([day, slots]) => (slots || []).forEach((id, shift) => {
+        if (id === staffId) result.push({ groupId: g.id, groupName: g.name, yyyyMm, day: Number(day), shift });
+      }));
+    }
+  }
+  return result.sort((p, q) => p.yyyyMm.localeCompare(q.yyyyMm) || p.day - q.day || p.shift - q.shift);
+}
+async function getAllSwapRequests() {
+  const snap = await getDocs(collection(db, "swapRequests"));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+// ช่องในตารางที่ได้มาจากการแลกเวรที่อนุมัติแล้ว: key = "วัน_ช่วง_staffIdที่ได้เวรนั้น"
+async function getSwappedCellKeys(yyyyMm) {
+  const keys = new Set();
+  try {
+    const snap = await getDocs(query(collection(db, "swapRequests"), where("status", "==", "approved")));
+    snap.docs.forEach((d) => {
+      const r = d.data();
+      if (r.from && r.from.yyyyMm === yyyyMm) keys.add(`${r.from.day}_${r.from.shift}_${r.toStaffId}`);
+      if (r.type === "swap" && r.to && r.to.yyyyMm === yyyyMm) keys.add(`${r.to.day}_${r.to.shift}_${r.fromStaffId}`);
+    });
+  } catch (e) { /* ไม่มีสิทธิ์อ่านหรือยังไม่มีข้อมูล — แสดงปฏิทินปกติ */ }
+  return keys;
+}
+// แลกข้ามชุดได้ระหว่างกลุ่ม "พนักงานอยู่เวร" ทุกชุด ส่วนกลุ่มอื่น (ผู้ตรวจเวร/พนักงานสั่งการ) แลกกันเองภายในกลุ่ม
+function canSwapBetweenGroups(groupIdA, groupIdB) {
+  if (groupIdA === groupIdB) return true;
+  const a = allGroups.find((g) => g.id === groupIdA), b = allGroups.find((g) => g.id === groupIdB);
+  return !!(a && b && isDutyRosterGroup(a) && isDutyRosterGroup(b));
+}
+
+async function refreshSwapBadge() {
+  const badge = document.getElementById("swapBadge");
+  try {
+    const list = await getAllSwapRequests();
+    let n = 0;
+    if (currentRole === "admin") n = list.filter((r) => r.status === "accepted").length;
+    else if (currentStaffProfile) n = list.filter((r) => r.status === "pending" && r.toStaffId === currentStaffProfile.id).length;
+    badge.textContent = n ? String(n) : "";
+  } catch (e) { badge.textContent = ""; }
+}
+
+function swapCardHtml(r, { actions = "", showReason = true, warn = "" } = {}) {
+  const fromSlot = `${shiftDateLabel(r.from.yyyyMm, r.from.day, r.from.shift)} <small>${escapeHtml(r.from.groupName)}</small>`;
+  const toSlot = r.type === "swap"
+    ? `${shiftDateLabel(r.to.yyyyMm, r.to.day, r.to.shift)} <small>${escapeHtml(r.to.groupName)}</small>`
+    : `<small>รับเวรไปอยู่แทน</small>`;
+  const typeLabel = r.type === "swap" ? "แลกเวร" : "ขอให้อยู่แทน";
+  return `<div class="swap-card">
+    <div class="swap-head">
+      <span>${typeLabel} · ส่งเมื่อ ${formatDateTime(r.createdAt)}</span>
+      <span class="status-pill st-${r.status}">${SWAP_STATUS_LABEL[r.status] || r.status}</span>
+    </div>
+    <div class="swap-line">
+      <div class="swap-side"><strong>${escapeHtml(r.from.name)}</strong><small>เวรเดิม: ${fromSlot}</small></div>
+      <div class="swap-arrow">${r.type === "swap" ? "⇄" : "→"}</div>
+      <div class="swap-side"><strong>${escapeHtml(r.to.name)}</strong><small>${r.type === "swap" ? "เวรเดิม: " : ""}${toSlot}</small></div>
+    </div>
+    ${showReason && r.reason ? `<div class="swap-reason">เหตุผล: ${escapeHtml(r.reason)}</div>` : ""}
+    ${r.note ? `<div class="swap-warn">${escapeHtml(r.note)}</div>` : ""}
+    ${warn ? `<div class="swap-warn">${warn}</div>` : ""}
+    ${actions ? `<div class="swap-actions">${actions}</div>` : ""}
+  </div>`;
+}
+function bindSwapActions(box) {
+  box.querySelectorAll("[data-swap-act]").forEach((btn) => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id, act = btn.dataset.swapAct;
+      btn.disabled = true;
+      try {
+        if (act === "accept") await updateDoc(doc(db, "swapRequests", id), { status: "accepted", respondedAt: Date.now() });
+        if (act === "reject") { if (!confirm("ยืนยันปฏิเสธคำขอนี้?")) { btn.disabled = false; return; } await updateDoc(doc(db, "swapRequests", id), { status: "rejected", respondedAt: Date.now() }); }
+        if (act === "cancel") { if (!confirm("ยืนยันยกเลิกคำขอนี้?")) { btn.disabled = false; return; } await updateDoc(doc(db, "swapRequests", id), { status: "cancelled", cancelledAt: Date.now() }); }
+        if (act === "deny") {
+          const note = prompt("เหตุผลที่ไม่อนุมัติ (ไม่บังคับ)", "");
+          if (note === null) { btn.disabled = false; return; }
+          await updateDoc(doc(db, "swapRequests", id), { status: "denied", decidedAt: Date.now(), decidedBy: auth.currentUser.email, note: note ? "แอดมิน: " + note : "" });
+        }
+        if (act === "approve") await approveSwap(id);
+      } catch (e) { alert("ทำรายการไม่สำเร็จ: " + friendlyError(e)); }
+      renderSwapView(); refreshSwapBadge();
+    };
+  });
+}
+
+// ---------- หน้า "แลกเวร" ----------
+let swapFormMyShifts = [];
+let swapFormTargetShifts = [];
+let swapFormStaff = [];
+async function renderSwapView() {
+  if (!allGroups.length) allGroups = await getGroups();
+  const all = await getAllSwapRequests();
+  if (currentRole === "admin") {
+    const waiting = all.filter((r) => r.status === "accepted");
+    const adminBox = document.getElementById("swapAdminBox");
+    adminBox.className = waiting.length ? "" : "empty-hint";
+    adminBox.innerHTML = waiting.length ? waiting.map((r) => swapCardHtml(r, {
+      warn: isPastShift(r.from.yyyyMm, r.from.day) || (r.type === "swap" && isPastShift(r.to.yyyyMm, r.to.day)) ? "มีเวรที่ผ่านวันไปแล้วในคำขอนี้" : "",
+      actions: `<button class="btn btn-ok btn-small" data-swap-act="approve" data-id="${r.id}">✔ อนุมัติและอัปเดตตาราง</button>
+                <button class="btn btn-danger btn-small" data-swap-act="deny" data-id="${r.id}">ไม่อนุมัติ</button>`,
+    })).join("") : "ไม่มีคำขอที่รออนุมัติ";
+    bindSwapActions(adminBox);
+
+    const pending = all.filter((r) => r.status === "pending");
+    const allBox = document.getElementById("swapAdminAllBox");
+    allBox.className = pending.length ? "" : "empty-hint";
+    allBox.innerHTML = pending.length ? pending.map((r) => swapCardHtml(r, {
+      actions: `<button class="btn btn-danger btn-small" data-swap-act="deny" data-id="${r.id}">ไม่อนุมัติ / ปิดคำขอ</button>`,
+    })).join("") : "ไม่มีคำขอที่รออีกฝ่ายตอบ";
+    bindSwapActions(allBox);
+    return;
+  }
+
+  if (!currentStaffProfile) {
+    document.getElementById("swapIncomingBox").innerHTML = "ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อแอดมิน";
+    return;
+  }
+  const me = currentStaffProfile.id;
+  const incoming = all.filter((r) => r.status === "pending" && r.toStaffId === me);
+  const inBox = document.getElementById("swapIncomingBox");
+  inBox.className = incoming.length ? "" : "empty-hint";
+  inBox.innerHTML = incoming.length ? incoming.map((r) => swapCardHtml(r, {
+    actions: `<button class="btn btn-ok btn-small" data-swap-act="accept" data-id="${r.id}">ตอบรับ</button>
+              <button class="btn btn-danger btn-small" data-swap-act="reject" data-id="${r.id}">ปฏิเสธ</button>`,
+  })).join("") : "ไม่มีคำขอที่รอคุณตอบ";
+  bindSwapActions(inBox);
+
+  const mine = all.filter((r) => (r.fromStaffId === me || r.toStaffId === me) && !(r.status === "pending" && r.toStaffId === me)).slice(0, 30);
+  const mineBox = document.getElementById("swapMineBox");
+  mineBox.className = mine.length ? "" : "empty-hint";
+  mineBox.innerHTML = mine.length ? mine.map((r) => swapCardHtml(r, {
+    actions: r.fromStaffId === me && SWAP_OPEN.includes(r.status) ? `<button class="btn btn-ghost btn-small" data-swap-act="cancel" data-id="${r.id}">ยกเลิกคำขอ</button>` : "",
+  })).join("") : "ยังไม่มีคำขอ";
+  bindSwapActions(mineBox);
+
+  await populateSwapForm(all);
+}
+
+async function populateSwapForm(allRequests) {
+  const me = currentStaffProfile.id;
+  const lockedSlots = new Set(allRequests.filter((r) => r.fromStaffId === me && SWAP_OPEN.includes(r.status))
+    .map((r) => `${r.from.yyyyMm}_${r.from.day}_${r.from.shift}_${r.from.groupId}`));
+  swapFormMyShifts = (await getShiftsOfStaff(me, upcomingMonths()))
+    .filter((sh) => !isPastShift(sh.yyyyMm, sh.day))
+    .filter((sh) => !lockedSlots.has(`${sh.yyyyMm}_${sh.day}_${sh.shift}_${sh.groupId}`));
+  const mySel = document.getElementById("swapMyShiftSelect");
+  mySel.innerHTML = swapFormMyShifts.length
+    ? swapFormMyShifts.map((sh, i) => `<option value="${i}">${shiftDateLabel(sh.yyyyMm, sh.day, sh.shift)} — ${escapeHtml(sh.groupName)}</option>`).join("")
+    : `<option value="">ไม่มีเวรที่แลกได้ (หรือทุกเวรมีคำขอค้างอยู่แล้ว)</option>`;
+
+  const everyone = await getAllStaff();
+  swapFormStaff = everyone
+    .filter((s) => s.id !== me && canSwapBetweenGroups(currentStaffProfile.groupId, s.groupId))
+    .sort((a, b) => {
+      const ga = allGroups.find((g) => g.id === a.groupId)?.order ?? 0, gb = allGroups.find((g) => g.id === b.groupId)?.order ?? 0;
+      return ga - gb || (a.order ?? 0) - (b.order ?? 0);
+    });
+  const tSel = document.getElementById("swapTargetStaffSelect");
+  tSel.innerHTML = `<option value="">-- เลือกพนักงาน --</option>` + swapFormStaff.map((s) => {
+    const gName = allGroups.find((g) => g.id === s.groupId)?.name || "";
+    return `<option value="${s.id}" ${s.linkedUid ? "" : "disabled"}>${escapeHtml(staffDisplayName(s))} · ${escapeHtml(gName)}${s.linkedUid ? "" : " (ยังไม่สมัครสมาชิก)"}</option>`;
+  }).join("");
+  document.getElementById("swapTargetShiftSelect").innerHTML = `<option value="">-- เลือกพนักงานก่อน --</option>`;
+  updateSwapTypeUI();
+}
+function updateSwapTypeUI() {
+  const isSwap = document.getElementById("swapTypeSelect").value === "swap";
+  document.getElementById("swapTargetShiftField").classList.toggle("hidden", !isSwap);
+}
+document.getElementById("swapTypeSelect").onchange = updateSwapTypeUI;
+document.getElementById("swapTargetStaffSelect").onchange = async () => {
+  const targetId = document.getElementById("swapTargetStaffSelect").value;
+  const sel = document.getElementById("swapTargetShiftSelect");
+  if (!targetId) { sel.innerHTML = `<option value="">-- เลือกพนักงานก่อน --</option>`; return; }
+  sel.innerHTML = `<option value="">กำลังโหลด...</option>`;
+  swapFormTargetShifts = (await getShiftsOfStaff(targetId, upcomingMonths())).filter((sh) => !isPastShift(sh.yyyyMm, sh.day));
+  sel.innerHTML = swapFormTargetShifts.length
+    ? swapFormTargetShifts.map((sh, i) => `<option value="${i}">${shiftDateLabel(sh.yyyyMm, sh.day, sh.shift)} — ${escapeHtml(sh.groupName)}</option>`).join("")
+    : `<option value="">คนนี้ไม่มีเวรที่ยังไม่ถึงวัน</option>`;
+};
+document.getElementById("swapSubmitBtn").onclick = async () => {
+  if (!currentStaffProfile) return;
+  const type = document.getElementById("swapTypeSelect").value;
+  const mine = swapFormMyShifts[Number(document.getElementById("swapMyShiftSelect").value)];
+  const target = swapFormStaff.find((s) => s.id === document.getElementById("swapTargetStaffSelect").value);
+  const theirs = type === "swap" ? swapFormTargetShifts[Number(document.getElementById("swapTargetShiftSelect").value)] : null;
+  const reason = document.getElementById("swapReasonInput").value.trim();
+  if (!mine || document.getElementById("swapMyShiftSelect").value === "") { alert("กรุณาเลือกเวรของคุณ"); return; }
+  if (!target) { alert("กรุณาเลือกพนักงานที่จะแลกด้วย"); return; }
+  if (!target.linkedUid) { alert("พนักงานคนนี้ยังไม่ได้สมัครสมาชิก จึงตอบรับคำขอไม่ได้"); return; }
+  if (type === "swap" && (!theirs || document.getElementById("swapTargetShiftSelect").value === "")) { alert("กรุณาเลือกเวรของอีกฝ่ายที่จะรับมา"); return; }
+  if (type === "swap" && theirs.yyyyMm === mine.yyyyMm && theirs.day === mine.day && theirs.shift === mine.shift) {
+    alert("เวรทั้งสองอยู่วันและช่วงเดียวกัน แลกแล้วไม่มีอะไรเปลี่ยน กรุณาเลือกเวรอื่น"); return;
+  }
+  const meStaff = currentStaffProfile;
+  const targetGroupName = allGroups.find((g) => g.id === target.groupId)?.name || "";
+  const payload = {
+    type, status: "pending", reason, createdAt: Date.now(),
+    fromUid: currentUid, toUid: target.linkedUid,
+    fromStaffId: meStaff.id, toStaffId: target.id,
+    from: { staffId: meStaff.id, name: staffDisplayName(meStaff), homeGroupName: meStaff.groupName,
+      groupId: mine.groupId, groupName: mine.groupName, yyyyMm: mine.yyyyMm, day: mine.day, shift: mine.shift },
+    to: type === "swap"
+      ? { staffId: target.id, name: staffDisplayName(target), homeGroupName: targetGroupName,
+          groupId: theirs.groupId, groupName: theirs.groupName, yyyyMm: theirs.yyyyMm, day: theirs.day, shift: theirs.shift }
+      : { staffId: target.id, name: staffDisplayName(target), homeGroupName: targetGroupName },
+  };
+  const btn = document.getElementById("swapSubmitBtn");
+  btn.disabled = true;
+  try {
+    await addDoc(collection(db, "swapRequests"), payload);
+    document.getElementById("swapReasonInput").value = "";
+    alert("ส่งคำขอแล้ว รออีกฝ่ายตอบรับ");
+  } catch (e) { alert("ส่งคำขอไม่สำเร็จ: " + friendlyError(e)); }
+  btn.disabled = false;
+  renderSwapView();
+};
+
+// ---------- แอดมินอนุมัติ: ตรวจซ้ำ + สลับชื่อในตาราง (transaction) ----------
+async function approveSwap(requestId) {
+  const reqSnap = await getDoc(doc(db, "swapRequests", requestId));
+  if (!reqSnap.exists()) return;
+  const r = reqSnap.data();
+  if (r.status !== "accepted") { alert("คำขอนี้ไม่ได้อยู่ในสถานะรออนุมัติแล้ว"); return; }
+
+  // เตือนถ้าหลังแลกแล้วมีคนได้หลายเวรในวันเดียวกัน หรือเป็นเวรที่ผ่านไปแล้ว
+  const warnings = [];
+  const toShiftsThatDay = (await getShiftsOfStaff(r.toStaffId, [r.from.yyyyMm]))
+    .filter((sh) => sh.day === r.from.day && !(r.type === "swap" && sh.yyyyMm === r.to.yyyyMm && sh.day === r.to.day && sh.shift === r.to.shift && sh.groupId === r.to.groupId));
+  if (toShiftsThatDay.length) warnings.push(`${r.to.name} จะมีเวรมากกว่า 1 ช่วงในวันที่ ${r.from.day} (มีอยู่แล้ว: ${toShiftsThatDay.map((s) => "ช่วง" + (s.shift + 1)).join(", ")})`);
+  if (r.type === "swap") {
+    const fromShiftsThatDay = (await getShiftsOfStaff(r.fromStaffId, [r.to.yyyyMm]))
+      .filter((sh) => sh.day === r.to.day && !(sh.yyyyMm === r.from.yyyyMm && sh.day === r.from.day && sh.shift === r.from.shift && sh.groupId === r.from.groupId));
+    if (fromShiftsThatDay.length) warnings.push(`${r.from.name} จะมีเวรมากกว่า 1 ช่วงในวันที่ ${r.to.day} (มีอยู่แล้ว: ${fromShiftsThatDay.map((s) => "ช่วง" + (s.shift + 1)).join(", ")})`);
+  }
+  if (isPastShift(r.from.yyyyMm, r.from.day) || (r.type === "swap" && isPastShift(r.to.yyyyMm, r.to.day))) warnings.push("มีเวรที่ผ่านวันไปแล้วในคำขอนี้");
+  const confirmText = (warnings.length ? "⚠️ ข้อควรระวัง:\n- " + warnings.join("\n- ") + "\n\n" : "") + "อนุมัติคำขอนี้และอัปเดตตารางเวรทันทีหรือไม่?";
+  if (!confirm(confirmText)) return;
+
+  // เก็บฉบับเสนอลงนามไว้ก่อน ถ้าเดือนนั้นยังไม่เคยบันทึก (กันต้นฉบับหาย)
+  const months = new Set([r.from.yyyyMm]);
+  if (r.type === "swap") months.add(r.to.yyyyMm);
+  for (const mo of months) { if (!(await monthHasOriginal(mo))) await snapshotOriginalsForMonth(mo, "auto-before-swap"); }
+
+  const fromRef = doc(db, "schedules", scheduleId(r.from.groupId, r.from.yyyyMm));
+  const toRef = r.type === "swap" ? doc(db, "schedules", scheduleId(r.to.groupId, r.to.yyyyMm)) : null;
+  const sameDoc = toRef && toRef.path === fromRef.path;
+  try {
+    await runTransaction(db, async (tx) => {
+      const reqNow = await tx.get(doc(db, "swapRequests", requestId));
+      if (!reqNow.exists() || reqNow.data().status !== "accepted") throw new Error("SWAP_STATE_CHANGED");
+      const fromSnap = await tx.get(fromRef);
+      const toSnap = toRef && !sameDoc ? await tx.get(toRef) : null;
+      const fromAssign = JSON.parse(JSON.stringify(fromSnap.exists() ? fromSnap.data().assignments || {} : {}));
+      const toAssign = sameDoc ? fromAssign : (toSnap ? JSON.parse(JSON.stringify(toSnap.exists() ? toSnap.data().assignments || {} : {})) : null);
+
+      const fromSlots = fromAssign[String(r.from.day)] || [null, null, null];
+      if (fromSlots[r.from.shift] !== r.fromStaffId) throw new Error("SWAP_INVALID:เวรของ " + r.from.name + " ในตารางถูกเปลี่ยนไปแล้ว");
+      if (r.type === "swap") {
+        const toSlots = toAssign[String(r.to.day)] || [null, null, null];
+        if (toSlots[r.to.shift] !== r.toStaffId) throw new Error("SWAP_INVALID:เวรของ " + r.to.name + " ในตารางถูกเปลี่ยนไปแล้ว");
+        toSlots[r.to.shift] = r.fromStaffId;
+        toAssign[String(r.to.day)] = toSlots;
+      }
+      const fromSlotsNew = [...(fromAssign[String(r.from.day)] || [null, null, null])];
+      fromSlotsNew[r.from.shift] = r.toStaffId;
+      fromAssign[String(r.from.day)] = fromSlotsNew;
+
+      tx.set(fromRef, { assignments: fromAssign, updatedAt: Date.now() });
+      if (toRef && !sameDoc) tx.set(toRef, { assignments: toAssign, updatedAt: Date.now() });
+      tx.update(doc(db, "swapRequests", requestId), { status: "approved", decidedAt: Date.now(), decidedBy: auth.currentUser.email });
+    });
+    alert("อนุมัติแล้ว ตารางเวรและปฏิทินเวรอัปเดตเรียบร้อย");
+  } catch (e) {
+    const msg = String(e.message || "");
+    if (msg.startsWith("SWAP_INVALID:")) {
+      const note = msg.replace("SWAP_INVALID:", "");
+      await updateDoc(doc(db, "swapRequests", requestId), { status: "invalid", decidedAt: Date.now(), decidedBy: auth.currentUser.email, note: "ระบบ: " + note });
+      alert("อนุมัติไม่ได้: " + note + "\nคำขอนี้ถูกปิดแล้ว ให้พนักงานส่งคำขอใหม่");
+    } else if (msg === "SWAP_STATE_CHANGED") {
+      alert("คำขอนี้ถูกยกเลิกหรือเปลี่ยนสถานะไปแล้ว");
+    } else throw e;
+  }
+}
+
+// ---------- ประวัติการแลกเวร (ทุกคนเห็น) ----------
+async function renderSwapHistory() {
+  const box = document.getElementById("swapHistoryBox");
+  let list;
+  try {
+    const snap = await getDocs(query(collection(db, "swapRequests"), where("status", "==", "approved")));
+    list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.decidedAt || 0) - (a.decidedAt || 0));
+  } catch (e) { box.innerHTML = "โหลดประวัติไม่สำเร็จ: " + escapeHtml(friendlyError(e)); return; }
+  if (!list.length) { box.className = "empty-hint"; box.innerHTML = "ยังไม่มีการแลกเวรที่อนุมัติแล้ว"; return; }
+  box.className = "";
+  const rows = list.slice(0, 300).map((r) => `<tr>
+      <td class="c">${formatDateTime(r.decidedAt)}</td>
+      <td class="c">${r.type === "swap" ? "แลกเวร" : "อยู่แทน"}</td>
+      <td><strong>${escapeHtml(r.from.name)}</strong><br><small>${escapeHtml(r.from.homeGroupName || "")}</small></td>
+      <td>${shiftDateLabel(r.from.yyyyMm, r.from.day, r.from.shift)}<br><small>${escapeHtml(r.from.groupName)} → ให้ ${escapeHtml(r.to.name)}</small></td>
+      <td class="c" style="font-size:18px;color:var(--teal-700);">${r.type === "swap" ? "⇄" : "→"}</td>
+      <td><strong>${escapeHtml(r.to.name)}</strong><br><small>${escapeHtml(r.to.homeGroupName || "")}</small></td>
+      <td>${r.type === "swap" ? `${shiftDateLabel(r.to.yyyyMm, r.to.day, r.to.shift)}<br><small>${escapeHtml(r.to.groupName)} → ให้ ${escapeHtml(r.from.name)}</small>` : "<small>ไม่มี (อยู่แทนฝ่ายเดียว)</small>"}</td>
+    </tr>`).join("");
+  box.innerHTML = `<table class="history-table"><thead><tr>
+      <th>อนุมัติเมื่อ</th><th>ประเภท</th><th style="text-align:left;">ผู้ขอ</th><th style="text-align:left;">เวรของผู้ขอ</th><th></th>
+      <th style="text-align:left;">อีกฝ่าย</th><th style="text-align:left;">เวรของอีกฝ่าย</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ==========================================================================
+// 16) ใส่โลโก้ กฟภ. แก้ไขกระแสไฟฟ้าขัดข้อง ที่มุมซ้ายบนของแอปและหน้าล็อกอิน
 // ==========================================================================
 (function initLogos() {
   const src = "data:image/png;base64," + PEA_OUTAGE_LOGO_BASE64;
