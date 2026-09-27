@@ -236,6 +236,63 @@ body.printing-form #printFormArea{display:block;}
   .print-page{page-break-after:always;width:100%;min-height:0;padding:0;margin:0;}
   .print-page:last-child{page-break-after:auto;}
 }
+
+/* ---------- calendar-based swap/cover initiation ---------- */
+.cal-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:2px;}
+.cal-name{cursor:default;}
+.cal-name.cal-me{background:var(--amber-500);color:#fff;padding:0 4px;border-radius:3px;font-weight:800;}
+.cal-name.cal-me.cal-swapped{color:#fff;}
+.cal-name.cal-clickable{cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+.cal-name.cal-clickable:hover{background:#DDEBF7;border-radius:3px;}
+.cal-name.cal-picked{background:var(--ok) !important;color:#fff !important;border-radius:3px;padding:0 4px;}
+.cal-mode-banner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--amber-100);border:1px solid var(--amber-500);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:13.5px;color:#6B4A0E;}
+.cal-mode-banner strong{color:#8A5B18;}
+.modal-overlay{position:fixed;inset:0;background:rgba(11,20,18,.55);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;}
+.modal-box{background:#fff;border-radius:6px;max-width:440px;width:100%;padding:22px 22px 18px;box-shadow:0 20px 60px rgba(0,0,0,.35);max-height:90vh;overflow:auto;}
+.modal-box h3{margin-bottom:14px;}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;}
+
+/* ---------- mobile responsiveness ---------- */
+.mobile-topbar{display:none;}
+@media (max-width:860px){
+  .mobile-topbar{
+    display:flex;align-items:center;gap:12px;background:var(--teal-900);color:#fff;
+    padding:12px 14px;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.2);
+  }
+  .mobile-topbar .brand-title{font-size:15px;font-weight:700;}
+  #mobileMenuBtn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;padding:6px 10px;font-size:16px;line-height:1;cursor:pointer;}
+  .shell{flex-direction:column;min-height:auto;}
+  .sidebar{
+    position:fixed;top:0;left:0;bottom:0;width:78vw;max-width:280px;transform:translateX(-100%);
+    transition:transform .2s ease;z-index:50;overflow-y:auto;padding-top:16px;
+  }
+  .sidebar.open{transform:translateX(0);}
+  .sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;}
+  .sidebar-backdrop.show{display:block;}
+  .sidebar .brand{display:none !important;}
+  .main{padding:14px 12px 40px;}
+  .page-head{margin-bottom:14px;}
+  .page-head h2{font-size:18px;}
+  .row-flex{gap:8px;}
+  .field{min-width:0 !important;flex:1 1 100% !important;}
+  .row-flex .field{flex:1 1 100%;max-width:none !important;}
+  .sched-toolbar{padding:10px 12px;gap:8px 10px;}
+  .tb-group{gap:6px;width:100%;}
+  .tb-field{flex:1 1 auto;}
+  .panel{padding:14px;}
+  table{font-size:11.5px;}
+  .cal-table th{padding:6px 2px;font-size:11px;}
+  .cal-day{min-height:76px;padding:4px 3px;}
+  .cal-daynum{font-size:15px;padding:3px 0;}
+  .cal-shift-row{font-size:12.5px;padding:3px 2px;line-height:1.2;}
+  .cal-shift-row.dash{font-size:11px;}
+  .cal-holiday-name{font-size:10px;}
+  .cal-toolbar{flex-direction:column;align-items:stretch;}
+  .cal-toolbar .btn{width:100%;}
+  .swap-line{flex-direction:column;align-items:stretch;}
+  .swap-arrow{align-self:center;transform:rotate(90deg);}
+  .modal-box{padding:16px;}
+}
 </style>
 </head>
 <body>
@@ -280,6 +337,11 @@ body.printing-form #printFormArea{display:block;}
 
 <!-- ========== APP SCREEN ========== -->
 <div class="shell hidden" id="appScreen">
+  <div class="mobile-topbar no-print">
+    <button id="mobileMenuBtn" aria-label="เมนู">☰</button>
+    <div class="brand-title">ระบบจัดเวร กฟภ.</div>
+  </div>
+  <div class="sidebar-backdrop no-print" id="sidebarBackdrop"></div>
   <nav class="sidebar">
     <div class="brand" style="display:flex;align-items:center;gap:10px;">
       <div class="pea-badge pea-badge-sm">
@@ -322,7 +384,12 @@ body.printing-form #printFormArea{display:block;}
           <div class="field" style="max-width:220px;"><label>เดือน</label><input type="month" id="calendarMonthInput"></div>
           <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printCalendarBtn">🖨️ พิมพ์ / บันทึก PDF</button></div>
         </div>
+        <div class="cal-toolbar staff-only" id="calSwapToolbar">
+          <button class="btn btn-ghost btn-small" id="calSwapModeBtn">🔄 แลกเวรจากปฏิทิน</button>
+          <button class="btn btn-ghost btn-small" id="calCoverModeBtn">📤 ฝากเวรจากปฏิทิน</button>
+        </div>
       </div>
+      <div class="cal-mode-banner hidden no-print" id="calModeBanner"></div>
       <div class="panel scroll-x"><div id="calendarBox" class="empty-hint">เลือกเดือนเพื่อดูปฏิทินเวร</div></div>
     </section>
 
@@ -601,6 +668,8 @@ let allGroups = [];
 let holidaysMap = {};
 let activeStaffGroupId = null;
 let activeScheduleGroupId = null;
+let calMode = null;       // null | "swap" | "cover"  — โหมดแลกเวร/ฝากเวรจากปฏิทิน
+let calPickedMine = null; // เวรของตัวเองที่เลือกไว้ (ขั้นที่ 1)
 
 function todayISO(y, m, d) { return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
 function escapeHtml(str) { return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
@@ -879,7 +948,11 @@ document.getElementById("logoutBtn").onclick = () => signOut(auth);
 // ==========================================================================
 // 7) การนำทางในแอป
 // ==========================================================================
-document.querySelectorAll(".nav-item").forEach((item) => item.addEventListener("click", () => switchView(item.dataset.view)));
+document.querySelectorAll(".nav-item").forEach((item) => item.addEventListener("click", () => { switchView(item.dataset.view); closeMobileSidebar(); }));
+function openMobileSidebar() { document.querySelector(".sidebar").classList.add("open"); document.getElementById("sidebarBackdrop").classList.add("show"); }
+function closeMobileSidebar() { document.querySelector(".sidebar").classList.remove("open"); document.getElementById("sidebarBackdrop").classList.remove("show"); }
+document.getElementById("mobileMenuBtn").onclick = openMobileSidebar;
+document.getElementById("sidebarBackdrop").onclick = closeMobileSidebar;
 function switchView(name) {
   document.querySelectorAll(".nav-item").forEach((i) => i.classList.toggle("active", i.dataset.view === name));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
@@ -1365,7 +1438,7 @@ async function renderCalendar() {
   const groupAssignments = [];
   for (const g of dutyGroups) {
     const assignments = (await loadSchedule(g.id, yyyyMm)) || {};
-    groupAssignments.push(assignments);
+    groupAssignments.push({ groupId: g.id, groupName: g.name, assignments });
   }
   // ช่องที่ได้มาจากการแลกเวร (อนุมัติแล้ว) จะแสดงชื่อพร้อมเครื่องหมาย ⇄
   const swappedKeys = await getSwappedCellKeys(yyyyMm);
@@ -1398,12 +1471,28 @@ async function renderCalendar() {
       for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
         const active = isDutyShiftActive(shiftIdx, dow, isHoliday);
         if (!active) { rows += `<div class="cal-shift-row dash">-</div>`; continue; }
+        const isPast = isPastShift(yyyyMm, d);
         const names = groupAssignments
-          .map((a) => (a[String(d)] || [])[shiftIdx])
-          .filter(Boolean)
-          .map((id) => {
-            const label = escapeHtml(nicknameMap[id] || "?");
-            return swappedKeys.has(`${d}_${shiftIdx}_${id}`) ? `<span class="cal-swapped" title="ได้เวรนี้จากการแลกเวร">${label}</span>` : label;
+          .map((ga) => ({ id: (ga.assignments[String(d)] || [])[shiftIdx], groupId: ga.groupId, groupName: ga.groupName }))
+          .filter((x) => x.id)
+          .map((x) => {
+            const label = escapeHtml(nicknameMap[x.id] || "?");
+            const isMe = currentStaffProfile && x.id === currentStaffProfile.id;
+            const swapped = swappedKeys.has(`${d}_${shiftIdx}_${x.id}`);
+            let clickable = false;
+            if (calMode && currentStaffProfile) {
+              if (!calPickedMine) clickable = isMe && !isPast;
+              else if (calMode === "swap") clickable = !isMe && !isPast;
+            }
+            const isPicked = calPickedMine && calPickedMine.day === d && calPickedMine.shift === shiftIdx && calPickedMine.staffId === x.id;
+            const cls = ["cal-name"];
+            if (isMe) cls.push("cal-me");
+            if (swapped) cls.push("cal-swapped");
+            if (clickable) cls.push("cal-clickable");
+            if (isPicked) cls.push("cal-picked");
+            const dataAttrs = `data-day="${d}" data-shift="${shiftIdx}" data-staffid="${x.id}" data-name="${escapeHtml(nicknameMap[x.id] || "?")}" data-groupid="${x.groupId}" data-groupname="${escapeHtml(x.groupName)}" data-yyyymm="${yyyyMm}"`;
+            const title = swapped ? "ได้เวรนี้จากการแลกเวร" : "";
+            return `<span class="${cls.join(" ")}" ${dataAttrs} ${title ? `title="${title}"` : ""}>${label}</span>`;
           });
         rows += `<div class="cal-shift-row">${names.length ? names.join(" ") : "-"}</div>`;
       }
@@ -1419,7 +1508,160 @@ async function renderCalendar() {
   }
 
   box.innerHTML = `<table class="cal-table">${head}${body}</table>
-    <p class="legend">ชื่อที่มีเครื่องหมาย ⇄ = ได้เวรนั้นมาจากการแลกเวรที่อนุมัติแล้ว (ดูรายละเอียดที่เมนู "ประวัติการแลกเวร")</p>`;
+    <p class="legend">ชื่อที่มีเครื่องหมาย ⇄ = ได้เวรนั้นมาจากการแลกเวรที่อนุมัติแล้ว (ดูรายละเอียดที่เมนู "ประวัติการแลกเวร")${currentStaffProfile ? " · ชื่อของคุณจะไฮไลท์สีส้ม" : ""}</p>`;
+  box.querySelectorAll(".cal-name").forEach((el) => { el.onclick = () => onCalNameClick(el); });
+  updateCalModeBanner();
+}
+
+// ---------- แลกเวร/ฝากเวรโดยจิ้มเลือกจากปฏิทินเวร (อีกช่องทางนอกจากฟอร์มแบบดรอปดาวน์) ----------
+function updateCalModeBanner() {
+  const banner = document.getElementById("calModeBanner");
+  document.getElementById("calSwapModeBtn").classList.toggle("btn-primary", calMode === "swap");
+  document.getElementById("calCoverModeBtn").classList.toggle("btn-primary", calMode === "cover");
+  if (!calMode) { banner.classList.add("hidden"); banner.innerHTML = ""; return; }
+  banner.classList.remove("hidden");
+  let text;
+  if (!calPickedMine) {
+    text = calMode === "swap"
+      ? "โหมดแลกเวร: จิ้มชื่อของคุณ (สีส้ม) ในปฏิทินเพื่อเลือกวัน/กะที่จะแลก"
+      : "โหมดฝากเวร: จิ้มชื่อของคุณ (สีส้ม) ในปฏิทินเพื่อเลือกวัน/กะที่จะฝาก";
+  } else {
+    text = `เลือกเวรของคุณแล้ว: <strong>${shiftDateLabel(calPickedMine.yyyyMm, calPickedMine.day, calPickedMine.shift)}</strong> — `
+      + (calMode === "swap" ? "จิ้มชื่อของเพื่อนร่วมงาน (วันที่ยังไม่ถึง) ที่จะแลกด้วย" : "กำลังเลือกผู้รับฝากเวร...");
+  }
+  banner.innerHTML = `<span>${text}</span><button class="btn btn-ghost btn-small" id="calModeCancelBtn" style="width:auto;">ยกเลิก</button>`;
+  const cancelBtn = document.getElementById("calModeCancelBtn");
+  if (cancelBtn) cancelBtn.onclick = cancelCalMode;
+}
+function cancelCalMode() { calMode = null; calPickedMine = null; renderCalendar(); }
+document.getElementById("calSwapModeBtn").onclick = () => {
+  if (!currentStaffProfile) { alert("ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อแอดมิน"); return; }
+  calMode = calMode === "swap" ? null : "swap"; calPickedMine = null; renderCalendar();
+};
+document.getElementById("calCoverModeBtn").onclick = () => {
+  if (!currentStaffProfile) { alert("ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อแอดมิน"); return; }
+  calMode = calMode === "cover" ? null : "cover"; calPickedMine = null; renderCalendar();
+};
+
+function onCalNameClick(el) {
+  if (!calMode || !currentStaffProfile) return;
+  const data = {
+    staffId: el.dataset.staffid, name: el.dataset.name, groupId: el.dataset.groupid,
+    groupName: el.dataset.groupname, yyyyMm: el.dataset.yyyymm, day: Number(el.dataset.day), shift: Number(el.dataset.shift),
+  };
+  if (isPastShift(data.yyyyMm, data.day)) { alert("เวรนี้ผ่านวันไปแล้ว ไม่สามารถเลือกได้"); return; }
+  if (!calPickedMine) {
+    if (data.staffId !== currentStaffProfile.id) { alert("กรุณาจิ้มชื่อของตัวเอง (สีส้ม) ก่อน เพื่อเลือกเวรของคุณ"); return; }
+    calPickedMine = data;
+    if (calMode === "cover") { openCoverPickerModal(); return; }
+    renderCalendar();
+    return;
+  }
+  if (calMode === "swap") {
+    if (data.staffId === currentStaffProfile.id) { alert("กรุณาจิ้มชื่อของเพื่อนร่วมงานคนอื่นเพื่อเลือกเวรที่จะแลกด้วย"); return; }
+    if (!canSwapBetweenGroups(calPickedMine.groupId, data.groupId)) { alert("ไม่สามารถแลกเวรข้ามกลุ่มนี้ได้"); return; }
+    if (calPickedMine.yyyyMm === data.yyyyMm && calPickedMine.day === data.day && calPickedMine.shift === data.shift) {
+      alert("เวรทั้งสองอยู่วันและช่วงเดียวกัน แลกแล้วไม่มีอะไรเปลี่ยน กรุณาเลือกเวรอื่น"); return;
+    }
+    openSwapConfirmModal(data);
+  }
+}
+
+function closeModal() { const m = document.getElementById("calSwapModal"); if (m) m.remove(); }
+
+async function openCoverPickerModal() {
+  updateCalModeBanner();
+  const everyone = await getAllStaff();
+  const candidates = everyone
+    .filter((s) => s.id !== currentStaffProfile.id && canSwapBetweenGroups(calPickedMine.groupId, s.groupId))
+    .sort((a, b) => {
+      const ga = allGroups.find((g) => g.id === a.groupId)?.order ?? 0, gb = allGroups.find((g) => g.id === b.groupId)?.order ?? 0;
+      return ga - gb || (a.order ?? 0) - (b.order ?? 0);
+    });
+  const optsHtml = candidates.map((s) => {
+    const gName = allGroups.find((g) => g.id === s.groupId)?.name || "";
+    return `<option value="${s.id}" ${s.linkedUid ? "" : "disabled"}>${escapeHtml(staffDisplayName(s))} · ${escapeHtml(gName)}${s.linkedUid ? "" : " (ยังไม่สมัครสมาชิก)"}</option>`;
+  }).join("");
+  const wrap = document.createElement("div");
+  wrap.className = "modal-overlay"; wrap.id = "calSwapModal";
+  wrap.innerHTML = `<div class="modal-box">
+    <h3>ฝากเวร: ${escapeHtml(shiftDateLabel(calPickedMine.yyyyMm, calPickedMine.day, calPickedMine.shift))}</h3>
+    <div class="field"><label>ฝากให้ใคร</label><select id="calCoverTarget"><option value="">-- เลือกพนักงาน --</option>${optsHtml}</select></div>
+    <div class="field"><label>เหตุผล (ไม่บังคับ)</label><input type="text" id="calCoverReason"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="calModalCancel" style="width:auto;">ยกเลิก</button>
+      <button class="btn btn-primary" id="calModalSubmit" style="width:auto;">ส่งคำขอฝากเวร</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  document.getElementById("calModalCancel").onclick = () => { closeModal(); cancelCalMode(); };
+  document.getElementById("calModalSubmit").onclick = async () => {
+    const targetId = document.getElementById("calCoverTarget").value;
+    const target = candidates.find((s) => s.id === targetId);
+    if (!target) { alert("กรุณาเลือกพนักงานที่จะฝากเวรให้"); return; }
+    if (!target.linkedUid) { alert("พนักงานคนนี้ยังไม่ได้สมัครสมาชิก จึงรับฝากเวรไม่ได้"); return; }
+    const reason = document.getElementById("calCoverReason").value.trim();
+    const btn = document.getElementById("calModalSubmit");
+    btn.disabled = true;
+    const ok = await submitSwapRequest({ type: "cover", mine: calPickedMine, target, theirs: null, reason });
+    btn.disabled = false;
+    if (ok) { closeModal(); cancelCalMode(); }
+  };
+}
+
+async function openSwapConfirmModal(theirs) {
+  const everyone = await getAllStaff();
+  const target = everyone.find((s) => s.id === theirs.staffId);
+  if (!target) { alert("ไม่พบข้อมูลพนักงานคนนี้"); return; }
+  if (!target.linkedUid) { alert("พนักงานคนนี้ยังไม่ได้สมัครสมาชิก จึงตอบรับคำขอไม่ได้"); return; }
+  const wrap = document.createElement("div");
+  wrap.className = "modal-overlay"; wrap.id = "calSwapModal";
+  wrap.innerHTML = `<div class="modal-box">
+    <h3>ยืนยันคำขอแลกเวร</h3>
+    <div class="swap-line" style="margin-bottom:12px;">
+      <div class="swap-side"><strong>คุณ</strong><small>${escapeHtml(shiftDateLabel(calPickedMine.yyyyMm, calPickedMine.day, calPickedMine.shift))}</small></div>
+      <div class="swap-arrow">⇄</div>
+      <div class="swap-side"><strong>${escapeHtml(staffDisplayName(target))}</strong><small>${escapeHtml(shiftDateLabel(theirs.yyyyMm, theirs.day, theirs.shift))}</small></div>
+    </div>
+    <div class="field"><label>เหตุผล (ไม่บังคับ)</label><input type="text" id="calSwapReason"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="calModalCancel" style="width:auto;">ยกเลิก</button>
+      <button class="btn btn-primary" id="calModalSubmit" style="width:auto;">ส่งคำขอแลกเวร</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  document.getElementById("calModalCancel").onclick = () => closeModal();
+  document.getElementById("calModalSubmit").onclick = async () => {
+    const reason = document.getElementById("calSwapReason").value.trim();
+    const btn = document.getElementById("calModalSubmit");
+    btn.disabled = true;
+    const ok = await submitSwapRequest({ type: "swap", mine: calPickedMine, target, theirs, reason });
+    btn.disabled = false;
+    if (ok) { closeModal(); cancelCalMode(); }
+  };
+}
+
+// สร้างคำขอแลกเวร/ฝากเวร (ใช้ร่วมกันทั้งฟอร์มดรอปดาวน์และการจิ้มเลือกจากปฏิทิน)
+async function submitSwapRequest({ type, mine, target, theirs, reason }) {
+  const meStaff = currentStaffProfile;
+  const targetGroupName = allGroups.find((g) => g.id === target.groupId)?.name || "";
+  const payload = {
+    type, status: "pending", reason, createdAt: Date.now(),
+    fromUid: currentUid, toUid: target.linkedUid,
+    fromStaffId: meStaff.id, toStaffId: target.id,
+    from: { staffId: meStaff.id, name: staffDisplayName(meStaff), homeGroupName: meStaff.groupName,
+      groupId: mine.groupId, groupName: mine.groupName, yyyyMm: mine.yyyyMm, day: mine.day, shift: mine.shift },
+    to: type === "swap"
+      ? { staffId: target.id, name: staffDisplayName(target), homeGroupName: targetGroupName,
+          groupId: theirs.groupId, groupName: theirs.groupName, yyyyMm: theirs.yyyyMm, day: theirs.day, shift: theirs.shift }
+      : { staffId: target.id, name: staffDisplayName(target), homeGroupName: targetGroupName },
+  };
+  try {
+    await addDoc(collection(db, "swapRequests"), payload);
+    alert("ส่งคำขอแล้ว รออีกฝ่ายตอบรับ");
+    refreshSwapBadge();
+    return true;
+  } catch (e) { alert("ส่งคำขอไม่สำเร็จ: " + friendlyError(e)); return false; }
 }
 async function renderMySchedule() {
   const box = document.getElementById("myScheduleBox");
@@ -1813,26 +2055,10 @@ document.getElementById("swapSubmitBtn").onclick = async () => {
   if (type === "swap" && theirs.yyyyMm === mine.yyyyMm && theirs.day === mine.day && theirs.shift === mine.shift) {
     alert("เวรทั้งสองอยู่วันและช่วงเดียวกัน แลกแล้วไม่มีอะไรเปลี่ยน กรุณาเลือกเวรอื่น"); return;
   }
-  const meStaff = currentStaffProfile;
-  const targetGroupName = allGroups.find((g) => g.id === target.groupId)?.name || "";
-  const payload = {
-    type, status: "pending", reason, createdAt: Date.now(),
-    fromUid: currentUid, toUid: target.linkedUid,
-    fromStaffId: meStaff.id, toStaffId: target.id,
-    from: { staffId: meStaff.id, name: staffDisplayName(meStaff), homeGroupName: meStaff.groupName,
-      groupId: mine.groupId, groupName: mine.groupName, yyyyMm: mine.yyyyMm, day: mine.day, shift: mine.shift },
-    to: type === "swap"
-      ? { staffId: target.id, name: staffDisplayName(target), homeGroupName: targetGroupName,
-          groupId: theirs.groupId, groupName: theirs.groupName, yyyyMm: theirs.yyyyMm, day: theirs.day, shift: theirs.shift }
-      : { staffId: target.id, name: staffDisplayName(target), homeGroupName: targetGroupName },
-  };
   const btn = document.getElementById("swapSubmitBtn");
   btn.disabled = true;
-  try {
-    await addDoc(collection(db, "swapRequests"), payload);
-    document.getElementById("swapReasonInput").value = "";
-    alert("ส่งคำขอแล้ว รออีกฝ่ายตอบรับ");
-  } catch (e) { alert("ส่งคำขอไม่สำเร็จ: " + friendlyError(e)); }
+  const ok = await submitSwapRequest({ type, mine, target, theirs, reason });
+  if (ok) document.getElementById("swapReasonInput").value = "";
   btn.disabled = false;
   renderSwapView();
 };
