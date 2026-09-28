@@ -240,7 +240,22 @@ body.printing-form #printFormArea{display:block;}
 }
 
 /* ---------- calendar-based swap/cover initiation ---------- */
-.cal-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:2px;}
+.cal-controls-row{display:flex;align-items:flex-end;gap:12px;}
+.cal-month-field{max-width:200px;flex:1;margin-bottom:0;}
+.icon-btn{flex:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:17px;display:flex;align-items:center;justify-content:center;transition:border-color .15s ease,background .15s ease,box-shadow .15s ease;padding:0;}
+.icon-btn:hover{border-color:var(--teal-500);background:var(--paper);box-shadow:0 2px 8px rgba(11,61,57,.15);}
+.cal-actions{display:flex;gap:10px;margin-top:14px;}
+.cal-action-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 14px;border-radius:20px;border:1.5px solid var(--teal-700);background:#fff;color:var(--teal-700);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;transition:background .15s ease,color .15s ease;white-space:nowrap;}
+.cal-action-btn:hover{background:#E1F0E7;}
+.cal-action-btn.btn-primary{background:var(--teal-700);color:#fff;}
+.cal-action-btn.cover{border-color:var(--amber-500);color:#8A5B18;}
+.cal-action-btn.cover:hover{background:var(--amber-100);}
+.cal-action-btn.cover.btn-primary{background:var(--amber-500);color:#fff;}
+.cal-action-icon{font-size:15px;}
+.swap-tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;}
+.swap-tabs .tab-btn{flex:none;white-space:nowrap;padding:10px 16px;}
+.swap-panel{display:none;}
+.swap-panel.active{display:block;}
 .cal-name{cursor:default;}
 .cal-name.cal-me{background:var(--amber-500);color:#fff;padding:0 4px;border-radius:3px;font-weight:800;}
 .cal-name.cal-me.cal-swapped{color:#fff;}
@@ -300,8 +315,12 @@ body.printing-form #printFormArea{display:block;}
   .cal-shift-row.dash{font-size:12.5px;}
   .cal-holiday-name{font-size:11px;}
   .legend{font-size:13px;}
-  .cal-toolbar{flex-direction:column;align-items:stretch;}
-  .cal-toolbar .btn{width:100%;}
+  .cal-controls-row{gap:8px;}
+  .cal-month-field{max-width:none;}
+  .icon-btn{width:42px;height:42px;font-size:18px;}
+  .cal-actions{gap:8px;}
+  .cal-action-btn{font-size:12.5px;padding:9px 8px;gap:5px;}
+  .swap-tabs .tab-btn{padding:10px 13px;font-size:13.5px;}
   .swap-card{font-size:14.5px;}
   .swap-line{flex-direction:column;align-items:stretch;}
   .swap-arrow{align-self:center;transform:rotate(90deg);}
@@ -398,13 +417,13 @@ body.printing-form #printFormArea{display:block;}
     <section class="view active" id="view-calendar">
       <div class="page-head"><div><h2>ปฏิทินเวร</h2><p>รวมเวรพนักงานอยู่เวรทั้ง 3 ชุดต่อวัน แสดงเป็นชื่อเล่น ดูง่ายแบบปฏิทิน</p></div></div>
       <div class="panel no-print">
-        <div class="row-flex">
-          <div class="field" style="max-width:220px;"><label>เดือน</label><input type="month" id="calendarMonthInput"></div>
-          <div class="field"><label>&nbsp;</label><button class="btn btn-ghost" id="printCalendarBtn">🖨️ พิมพ์ / บันทึก PDF</button></div>
+        <div class="cal-controls-row">
+          <div class="field cal-month-field"><label>เดือน</label><input type="month" id="calendarMonthInput"></div>
+          <button class="icon-btn" id="printCalendarBtn" title="พิมพ์ / บันทึก PDF" aria-label="พิมพ์ / บันทึก PDF">🖨️</button>
         </div>
-        <div class="cal-toolbar staff-only" id="calSwapToolbar">
-          <button class="btn btn-ghost btn-small" id="calSwapModeBtn">🔄 แลกเวรจากปฏิทิน</button>
-          <button class="btn btn-ghost btn-small" id="calCoverModeBtn">📤 ฝากเวรจากปฏิทิน</button>
+        <div class="cal-actions staff-only" id="calSwapToolbar">
+          <button class="cal-action-btn" id="calSwapModeBtn"><span class="cal-action-icon">🔄</span>แลกเวรจากปฏิทิน</button>
+          <button class="cal-action-btn cover" id="calCoverModeBtn"><span class="cal-action-icon">📤</span>ฝากเวรจากปฏิทิน</button>
         </div>
       </div>
       <div class="cal-mode-banner hidden no-print" id="calModeBanner"></div>
@@ -564,44 +583,57 @@ body.printing-form #printFormArea{display:block;}
     <section class="view" id="view-swap">
       <div class="page-head"><div><h2>แลกเวร</h2><p>ส่งคำขอ → เพื่อนตอบรับ → แอดมินอนุมัติ → ตารางเวรและปฏิทินเวรอัปเดตให้อัตโนมัติ</p></div></div>
 
-      <div class="panel admin-only" id="swapAdminPanel">
-        <h3>รอแอดมินอนุมัติ</h3>
-        <div id="swapAdminBox" class="empty-hint">กำลังโหลด...</div>
+      <div class="tab-row swap-tabs no-print" id="swapTabs">
+        <button class="tab-btn staff-only" data-swap-tab="send">ส่งคำขอ</button>
+        <button class="tab-btn staff-only" data-swap-tab="incoming">รอฉันตอบ<span class="nav-badge" id="swapIncomingBadge"></span></button>
+        <button class="tab-btn staff-only" data-swap-tab="mine">คำขอของฉัน</button>
+        <button class="tab-btn admin-only" data-swap-tab="approve">รออนุมัติ<span class="nav-badge" id="swapApproveBadge"></span></button>
+        <button class="tab-btn admin-only" data-swap-tab="all">คำขอทั้งหมด</button>
       </div>
 
-      <div class="panel staff-only">
-        <h3>ส่งคำขอแลกเวร</h3>
-        <div class="row-flex">
-          <div class="field" style="min-width:200px;"><label>ประเภทคำขอ</label>
-            <select id="swapTypeSelect">
-              <option value="swap">แลกเวร (สลับกันคนละเวร)</option>
-              <option value="cover">ขอให้อยู่แทน (อีกฝ่ายรับเวรไปฝ่ายเดียว)</option>
-            </select>
+      <div class="swap-panel" data-swap-panel="send">
+        <div class="panel staff-only">
+          <div class="row-flex">
+            <div class="field" style="min-width:200px;"><label>ประเภทคำขอ</label>
+              <select id="swapTypeSelect">
+                <option value="swap">แลกเวร (สลับกันคนละเวร)</option>
+                <option value="cover">ขอให้อยู่แทน (อีกฝ่ายรับเวรไปฝ่ายเดียว)</option>
+              </select>
+            </div>
+            <div class="field grow"><label>เวรของฉันที่ต้องการแลก</label><select id="swapMyShiftSelect"></select></div>
           </div>
-          <div class="field grow"><label>เวรของฉันที่ต้องการแลก</label><select id="swapMyShiftSelect"></select></div>
+          <div class="row-flex">
+            <div class="field grow"><label>แลกกับ</label><select id="swapTargetStaffSelect"></select></div>
+            <div class="field grow" id="swapTargetShiftField"><label>เวรของอีกฝ่ายที่จะรับมา</label><select id="swapTargetShiftSelect"></select></div>
+          </div>
+          <div class="field"><label>เหตุผล (ไม่บังคับ)</label><input type="text" id="swapReasonInput" maxlength="200" placeholder="เช่น ติดธุระต่างจังหวัด"></div>
+          <button class="btn btn-primary" id="swapSubmitBtn" style="width:auto;">ส่งคำขอ</button>
+          <p class="auth-sub" style="margin-top:10px;margin-bottom:0;">แสดงเฉพาะเวรที่ยังไม่ถึงวัน ของเดือนนี้และเดือนหน้า · แลกข้ามชุดได้ · อีกฝ่ายต้องสมัครสมาชิกในระบบแล้ว</p>
         </div>
-        <div class="row-flex">
-          <div class="field grow"><label>แลกกับ</label><select id="swapTargetStaffSelect"></select></div>
-          <div class="field grow" id="swapTargetShiftField"><label>เวรของอีกฝ่ายที่จะรับมา</label><select id="swapTargetShiftSelect"></select></div>
+      </div>
+
+      <div class="swap-panel" data-swap-panel="incoming">
+        <div class="panel staff-only">
+          <div id="swapIncomingBox" class="empty-hint">กำลังโหลด...</div>
         </div>
-        <div class="field"><label>เหตุผล (ไม่บังคับ)</label><input type="text" id="swapReasonInput" maxlength="200" placeholder="เช่น ติดธุระต่างจังหวัด"></div>
-        <button class="btn btn-primary" id="swapSubmitBtn" style="width:auto;">ส่งคำขอ</button>
-        <p class="auth-sub" style="margin-top:10px;margin-bottom:0;">แสดงเฉพาะเวรที่ยังไม่ถึงวัน ของเดือนนี้และเดือนหน้า · แลกข้ามชุดได้ · อีกฝ่ายต้องสมัครสมาชิกในระบบแล้ว</p>
       </div>
 
-      <div class="panel staff-only">
-        <h3>คำขอที่รอฉันตอบ</h3>
-        <div id="swapIncomingBox" class="empty-hint">กำลังโหลด...</div>
+      <div class="swap-panel" data-swap-panel="mine">
+        <div class="panel staff-only">
+          <div id="swapMineBox" class="empty-hint">กำลังโหลด...</div>
+        </div>
       </div>
 
-      <div class="panel staff-only">
-        <h3>คำขอที่ฉันส่ง / เกี่ยวกับฉัน</h3>
-        <div id="swapMineBox" class="empty-hint">กำลังโหลด...</div>
+      <div class="swap-panel" data-swap-panel="approve">
+        <div class="panel admin-only">
+          <div id="swapAdminBox" class="empty-hint">กำลังโหลด...</div>
+        </div>
       </div>
 
-      <div class="panel admin-only">
-        <h3>คำขอทั้งหมดที่ยังไม่จบ</h3>
-        <div id="swapAdminAllBox" class="empty-hint">กำลังโหลด...</div>
+      <div class="swap-panel" data-swap-panel="all">
+        <div class="panel admin-only">
+          <div id="swapAdminAllBox" class="empty-hint">กำลังโหลด...</div>
+        </div>
       </div>
     </section>
 
@@ -984,10 +1016,22 @@ function switchView(name) {
   if (name === "calendar") { renderCalendar(); renderSwapHistory(); }
   if (name === "holidays") renderHolidayList();
   if (name === "myschedule") renderMySchedule();
-  if (name === "swap") renderSwapView();
+  if (name === "swap") {
+    if (!swapActiveTab) switchSwapTab(currentRole === "admin" ? "approve" : "send");
+    renderSwapView();
+  }
   if (name === "staff") renderOverview();
   if (currentRole) refreshSwapBadge();
 }
+
+// ---------- แท็บหน้า "แลกเวร" ----------
+let swapActiveTab = null;
+function switchSwapTab(tab) {
+  swapActiveTab = tab;
+  document.querySelectorAll("#swapTabs .tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.swapTab === tab));
+  document.querySelectorAll(".swap-panel").forEach((p) => p.classList.toggle("active", p.dataset.swapPanel === tab));
+}
+document.querySelectorAll("#swapTabs .tab-btn").forEach((b) => b.addEventListener("click", () => switchSwapTab(b.dataset.swapTab)));
 
 // ==========================================================================
 // 8) auth guard หลัก — สลับหน้าจอ ไม่ redirect ข้ามไฟล์
@@ -1993,6 +2037,7 @@ async function renderSwapView() {
                 <button class="btn btn-danger btn-small" data-swap-act="deny" data-id="${r.id}">ไม่อนุมัติ</button>`,
     })).join("") : "ไม่มีคำขอที่รออนุมัติ";
     bindSwapActions(adminBox);
+    document.getElementById("swapApproveBadge").textContent = waiting.length ? String(waiting.length) : "";
 
     const pending = all.filter((r) => r.status === "pending");
     const allBox = document.getElementById("swapAdminAllBox");
@@ -2018,6 +2063,7 @@ async function renderSwapView() {
               <button class="btn btn-danger btn-small" data-swap-act="reject" data-id="${r.id}">ปฏิเสธ</button>`,
   })).join("") : "ไม่มีคำขอที่รอคุณตอบ";
   bindSwapActions(inBox);
+  document.getElementById("swapIncomingBadge").textContent = incoming.length ? String(incoming.length) : "";
 
   const mine = all.filter((r) => (r.fromStaffId === me || r.toStaffId === me) && !(r.status === "pending" && r.toStaffId === me)).slice(0, 30);
   const mineBox = document.getElementById("swapMineBox");
