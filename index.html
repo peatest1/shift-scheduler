@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ระบบจัดเวร กฟภ.</title>
+<meta name="theme-color" content="#0B3D39">
+<link rel="icon" type="image/png" id="faviconLink">
+<link rel="apple-touch-icon" id="appleIconLink">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
 :root{
@@ -129,6 +132,7 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .cal-table td{vertical-align:top;padding:0;height:1px;}
 .cal-day{padding:5px 6px;min-height:118px;}
 .cal-daynum{font-weight:800;font-size:20px;text-align:center;padding:5px 0;background:#EFEAE0;color:#101613;}
+.cal-dow-label{display:none;}
 .cal-daynum.sat{background:#CFE3F2;color:#0B3D39;}
 .cal-daynum.sun{background:#F3D2CB;color:#7A281A;}
 .cal-day.is-holiday{background:var(--amber-100);}
@@ -272,70 +276,80 @@ body.printing-form #printFormArea{display:block;}
 /* ---------- mobile responsiveness ---------- */
 .mobile-topbar{display:none;}
 @media (max-width:860px){
-  body{font-size:16px;}
+  body{font-size:17px;}
   .mobile-topbar{
     display:flex;align-items:center;gap:12px;background:var(--teal-900);color:#fff;
-    padding:14px;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.2);
+    padding:16px 14px;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.2);
   }
-  .mobile-topbar .brand-title{font-size:17px;font-weight:700;}
-  #mobileMenuBtn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;padding:8px 12px;font-size:19px;line-height:1;cursor:pointer;}
+  .mobile-topbar .brand-title{font-size:18px;font-weight:700;}
+  #mobileMenuBtn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;padding:8px 12px;font-size:20px;line-height:1;cursor:pointer;}
   .shell{flex-direction:column;min-height:auto;}
   .sidebar{
     position:fixed;top:0;left:0;bottom:0;width:82vw;max-width:320px;transform:translateX(-100%);
     transition:transform .2s ease;z-index:50;overflow-y:auto;padding-top:16px;
   }
   .sidebar.open{transform:translateX(0);}
-  .nav-item{font-size:16.5px;padding:15px 22px;}
-  .nav-badge{font-size:12.5px;}
-  .who{font-size:13px;}
+  .nav-item{font-size:18px;padding:16px 22px;}
+  .nav-badge{font-size:13.5px;}
+  .who{font-size:14px;}
   .sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;}
   .sidebar-backdrop.show{display:block;}
   .sidebar .brand{display:none !important;}
   .main{padding:16px 14px 44px;}
   .page-head{margin-bottom:16px;}
-  .page-head h2{font-size:20px;}
-  .page-head p{font-size:13.5px;}
+  .page-head h2{font-size:22px;}
+  .page-head p{font-size:14.5px;}
   .row-flex{gap:10px;}
   .field{min-width:0 !important;flex:1 1 100% !important;}
-  .field label{font-size:13.5px;}
-  .field input,.field select{font-size:16px;padding:11px 12px;}
+  .field label{font-size:14.5px;}
+  .field input,.field select{font-size:17px;padding:12px 13px;}
   .row-flex .field{flex:1 1 100%;max-width:none !important;}
-  .btn{padding:12px 16px;font-size:15px;}
-  .btn-small{padding:9px 12px;font-size:14px;}
+  .btn{padding:13px 16px;font-size:16px;}
+  .btn-small{padding:10px 13px;font-size:15px;}
   .sched-toolbar{padding:12px 14px;gap:10px 12px;}
   .tb-group{gap:8px;width:100%;}
   .tb-field{flex:1 1 auto;}
   .panel{padding:16px;}
-  .panel h3{font-size:15px;}
-  table{font-size:13px;}
-  .cal-table th{padding:8px 2px;font-size:12.5px;}
-  .cal-day{min-height:90px;padding:5px 4px;}
-  .cal-daynum{font-size:17px;padding:4px 0;}
-  .cal-shift-row{font-size:14.5px;padding:4px 2px;line-height:1.25;}
-  .cal-shift-row.dash{font-size:12.5px;}
-  .cal-holiday-name{font-size:11px;}
+  .panel h3{font-size:16px;}
+  table{font-size:14px;}
+  /* ปฏิทินเวร: พับตารางรายสัปดาห์ (7 คอลัมน์) ให้เป็นรายการวันเรียงลงมาทีละวัน อ่านง่ายบนจอแคบ ไม่ต้องซูม */
+  .cal-table,.cal-table tr,.cal-table th,.cal-table td{display:block;width:100%;}
+  .cal-table .cal-head-row{display:none;}
+  .cal-table td{border:none;padding:0;height:auto;}
+  .cal-table td.cal-empty{display:none;}
+  .cal-day{min-height:0;padding:14px 16px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;column-gap:12px;background:#fff;}
+  .cal-day.is-holiday{background:var(--amber-100);}
+  .cal-daynum{flex:none;width:auto;min-width:44px;height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:18px;padding:2px 8px;border-radius:10px;line-height:1.05;}
+  .cal-dow-label{display:block;font-size:10.5px;font-weight:600;opacity:.85;}
+  .cal-holiday-name{flex:1;min-width:0;text-align:left;padding:0;font-size:13.5px;}
+  .cal-shift-row{flex:1 1 100%;text-align:left;font-size:16.5px;padding:6px 0 0;border-top:1px dashed #D8D2C2;margin-top:6px;line-height:1.35;}
+  .cal-shift-1{border-top:none;margin-top:0;padding-top:2px;}
+  .cal-shift-row.dash{font-size:13.5px;}
+  .cal-shift-row::before{display:block;font-size:11px;font-weight:700;color:var(--ink-soft);letter-spacing:.3px;}
+  .cal-shift-1::before{content:"ช่วง 1";}
+  .cal-shift-2::before{content:"ช่วง 2";}
+  .cal-shift-3::before{content:"ช่วง 3";}
   .legend{font-size:13px;}
   .cal-controls-row{gap:8px;}
   .cal-month-field{max-width:none;}
   .icon-btn{width:42px;height:42px;font-size:18px;}
   .cal-actions{gap:8px;}
-  .cal-action-btn{font-size:12.5px;padding:9px 8px;gap:5px;}
-  .swap-tabs .tab-btn{padding:10px 13px;font-size:13.5px;}
-  .swap-card{font-size:14.5px;}
+  .cal-action-btn{font-size:13.5px;padding:10px 8px;gap:5px;}
+  .swap-tabs .tab-btn{padding:11px 14px;font-size:14.5px;}
+  .swap-card{font-size:15.5px;}
   .swap-line{flex-direction:column;align-items:stretch;}
   .swap-arrow{align-self:center;transform:rotate(90deg);}
-  .status-pill{font-size:12.5px;}
+  .status-pill{font-size:13px;}
   .modal-box{padding:18px;}
-  .modal-box h3{font-size:17px;}
-  .opt-panel summary{font-size:15px;padding:14px 16px;}
+  .modal-box h3{font-size:18px;}
+  .opt-panel summary{font-size:16px;padding:14px 16px;}
   .opt-body{padding:14px 16px 16px;}
 }
-@media (max-width:420px){
-  .cal-table{table-layout:fixed;}
-  .cal-day{min-height:78px;padding:4px 2px;}
-  .cal-shift-row{font-size:12.5px;}
-  .cal-daynum{font-size:15px;}
-  table{font-size:11.5px;}
+@media (max-width:380px){
+  .nav-item{font-size:15.5px;padding:14px 18px;}
+  .page-head h2{font-size:18.5px;}
+  .cal-daynum{min-width:40px;height:40px;font-size:16.5px;}
+  .cal-shift-row{font-size:15px;}
 }
 </style>
 </head>
@@ -1512,7 +1526,7 @@ async function renderCalendar() {
   const todayStr = todayISO(new Date().getFullYear(), new Date().getMonth() + 1, new Date().getDate());
 
   const weekNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-  let head = "<tr>" + weekNames.map((w) => `<th>${w}</th>`).join("") + "</tr>";
+  let head = "<tr class=\"cal-head-row\">" + weekNames.map((w) => `<th>${w}</th>`).join("") + "</tr>";
 
   const cells = [];
   for (let i = 0; i < firstDow; i++) cells.push(null);
@@ -1533,7 +1547,7 @@ async function renderCalendar() {
       let rows = "";
       for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
         const active = isDutyShiftActive(shiftIdx, dow, isHoliday);
-        if (!active) { rows += `<div class="cal-shift-row dash">-</div>`; continue; }
+        if (!active) { rows += `<div class="cal-shift-row cal-shift-${shiftIdx + 1} dash">-</div>`; continue; }
         const isPast = isPastShift(yyyyMm, d);
         const names = groupAssignments
           .map((ga) => ({ id: (ga.assignments[String(d)] || [])[shiftIdx], groupId: ga.groupId, groupName: ga.groupName }))
@@ -1557,11 +1571,11 @@ async function renderCalendar() {
             const title = swapped ? "ได้เวรนี้จากการแลกเวร" : "";
             return `<span class="${cls.join(" ")}" ${dataAttrs} ${title ? `title="${title}"` : ""}>${label}</span>`;
           });
-        rows += `<div class="cal-shift-row">${names.length ? names.join(" ") : "-"}</div>`;
+        rows += `<div class="cal-shift-row cal-shift-${shiftIdx + 1}">${names.length ? names.join(" ") : "-"}</div>`;
       }
       body += `<td>
         <div class="cal-day${isHoliday ? " is-holiday" : ""}" ${isHoliday ? `title="${holidaysMap[iso]}"` : ""}>
-          <div class="cal-daynum${dayNumClass}${iso === todayStr ? " today" : ""}">${d}</div>
+          <div class="cal-daynum${dayNumClass}${iso === todayStr ? " today" : ""}">${d}<span class="cal-dow-label">${THAI_DOW[dow]}</span></div>
           ${isHoliday ? `<div class="cal-holiday-name">${holidaysMap[iso]}</div>` : ""}
           ${rows}
         </div>
@@ -2241,6 +2255,11 @@ async function renderSwapHistory() {
   const loginImg = document.getElementById("pfLogoLogin");
   if (sidebarImg) sidebarImg.src = src;
   if (loginImg) loginImg.src = src;
+  // ใช้โลโก้เดียวกันเป็นไอคอนแท็บเบราว์เซอร์ / ไอคอนเวลาเพิ่มหน้าเว็บลงหน้าจอโฮมมือถือ
+  const favicon = document.getElementById("faviconLink");
+  const appleIcon = document.getElementById("appleIconLink");
+  if (favicon) favicon.href = src;
+  if (appleIcon) appleIcon.href = src;
 })();
 </script>
 </body>
