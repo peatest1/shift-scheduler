@@ -225,10 +225,12 @@ body.printing-form #printFormArea{display:block;}
 
 /* ---------- print ---------- */
 @media print{
-  .sidebar,.no-print{display:none !important;}
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
+  .sidebar,.no-print,.sidebar-backdrop,.mobile-topbar{display:none !important;}
+  body{background:#fff;}
   .main{padding:0;width:100%;}
   .shell{display:block;}
-  .panel{border:none;padding:0;margin-bottom:14px;}
+  .panel{border:none;padding:0;margin-bottom:14px;box-shadow:none;}
   .sched-scroll{max-height:none;overflow:visible;}
   .sched-table .sticky-col{position:static;}
   table{font-size:11px;}
@@ -255,43 +257,66 @@ body.printing-form #printFormArea{display:block;}
 /* ---------- mobile responsiveness ---------- */
 .mobile-topbar{display:none;}
 @media (max-width:860px){
+  body{font-size:16px;}
   .mobile-topbar{
     display:flex;align-items:center;gap:12px;background:var(--teal-900);color:#fff;
-    padding:12px 14px;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.2);
+    padding:14px;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.2);
   }
-  .mobile-topbar .brand-title{font-size:15px;font-weight:700;}
-  #mobileMenuBtn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;padding:6px 10px;font-size:16px;line-height:1;cursor:pointer;}
+  .mobile-topbar .brand-title{font-size:17px;font-weight:700;}
+  #mobileMenuBtn{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:4px;padding:8px 12px;font-size:19px;line-height:1;cursor:pointer;}
   .shell{flex-direction:column;min-height:auto;}
   .sidebar{
-    position:fixed;top:0;left:0;bottom:0;width:78vw;max-width:280px;transform:translateX(-100%);
+    position:fixed;top:0;left:0;bottom:0;width:82vw;max-width:320px;transform:translateX(-100%);
     transition:transform .2s ease;z-index:50;overflow-y:auto;padding-top:16px;
   }
   .sidebar.open{transform:translateX(0);}
+  .nav-item{font-size:16.5px;padding:15px 22px;}
+  .nav-badge{font-size:12.5px;}
+  .who{font-size:13px;}
   .sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;}
   .sidebar-backdrop.show{display:block;}
   .sidebar .brand{display:none !important;}
-  .main{padding:14px 12px 40px;}
-  .page-head{margin-bottom:14px;}
-  .page-head h2{font-size:18px;}
-  .row-flex{gap:8px;}
+  .main{padding:16px 14px 44px;}
+  .page-head{margin-bottom:16px;}
+  .page-head h2{font-size:20px;}
+  .page-head p{font-size:13.5px;}
+  .row-flex{gap:10px;}
   .field{min-width:0 !important;flex:1 1 100% !important;}
+  .field label{font-size:13.5px;}
+  .field input,.field select{font-size:16px;padding:11px 12px;}
   .row-flex .field{flex:1 1 100%;max-width:none !important;}
-  .sched-toolbar{padding:10px 12px;gap:8px 10px;}
-  .tb-group{gap:6px;width:100%;}
+  .btn{padding:12px 16px;font-size:15px;}
+  .btn-small{padding:9px 12px;font-size:14px;}
+  .sched-toolbar{padding:12px 14px;gap:10px 12px;}
+  .tb-group{gap:8px;width:100%;}
   .tb-field{flex:1 1 auto;}
-  .panel{padding:14px;}
-  table{font-size:11.5px;}
-  .cal-table th{padding:6px 2px;font-size:11px;}
-  .cal-day{min-height:76px;padding:4px 3px;}
-  .cal-daynum{font-size:15px;padding:3px 0;}
-  .cal-shift-row{font-size:12.5px;padding:3px 2px;line-height:1.2;}
-  .cal-shift-row.dash{font-size:11px;}
-  .cal-holiday-name{font-size:10px;}
+  .panel{padding:16px;}
+  .panel h3{font-size:15px;}
+  table{font-size:13px;}
+  .cal-table th{padding:8px 2px;font-size:12.5px;}
+  .cal-day{min-height:90px;padding:5px 4px;}
+  .cal-daynum{font-size:17px;padding:4px 0;}
+  .cal-shift-row{font-size:14.5px;padding:4px 2px;line-height:1.25;}
+  .cal-shift-row.dash{font-size:12.5px;}
+  .cal-holiday-name{font-size:11px;}
+  .legend{font-size:13px;}
   .cal-toolbar{flex-direction:column;align-items:stretch;}
   .cal-toolbar .btn{width:100%;}
+  .swap-card{font-size:14.5px;}
   .swap-line{flex-direction:column;align-items:stretch;}
   .swap-arrow{align-self:center;transform:rotate(90deg);}
-  .modal-box{padding:16px;}
+  .status-pill{font-size:12.5px;}
+  .modal-box{padding:18px;}
+  .modal-box h3{font-size:17px;}
+  .opt-panel summary{font-size:15px;padding:14px 16px;}
+  .opt-body{padding:14px 16px 16px;}
+}
+@media (max-width:420px){
+  .cal-table{table-layout:fixed;}
+  .cal-day{min-height:78px;padding:4px 2px;}
+  .cal-shift-row{font-size:12.5px;}
+  .cal-daynum{font-size:15px;}
+  table{font-size:11.5px;}
 }
 </style>
 </head>
@@ -358,26 +383,19 @@ body.printing-form #printFormArea{display:block;}
         <div class="brand-sub">แก้ไขกระแสไฟฟ้าขัดข้อง</div>
       </div>
     </div>
-    <div class="nav-item" data-view="overview">ภาพรวม</div>
     <div class="nav-item" data-view="calendar">ปฏิทินเวร</div>
-    <div class="nav-item admin-only" data-view="staff">จัดการพนักงาน</div>
-    <div class="nav-item admin-only" data-view="holidays">ปฏิทิน / วันหยุด</div>
-    <div class="nav-item admin-only" data-view="schedule">จัดตารางเวร</div>
     <div class="nav-item staff-only" data-view="myschedule">ตารางเวรของฉัน</div>
     <div class="nav-item" data-view="swap">แลกเวร<span class="nav-badge" id="swapBadge"></span></div>
-    <div class="nav-item" data-view="swaphistory">ประวัติการแลกเวร</div>
+    <div class="nav-item admin-only" data-view="schedule">จัดตารางเวร</div>
+    <div class="nav-item admin-only" data-view="staff">จัดการพนักงาน</div>
+    <div class="nav-item admin-only" data-view="holidays">ปฏิทิน / วันหยุด</div>
     <div class="sidebar-foot">
       <div class="who" id="whoBox">กำลังโหลด...</div>
       <button class="btn btn-ghost btn-small" id="logoutBtn" style="width:100%;">ออกจากระบบ</button>
     </div>
   </nav>
   <main class="main">
-    <section class="view active" id="view-overview">
-      <div class="page-head"><div><h2>ภาพรวม</h2><p>สรุปข้อมูลเวรประจำเดือน</p></div></div>
-      <div class="panel" id="overviewPanel">กำลังโหลดข้อมูล...</div>
-    </section>
-
-    <section class="view" id="view-calendar">
+    <section class="view active" id="view-calendar">
       <div class="page-head"><div><h2>ปฏิทินเวร</h2><p>รวมเวรพนักงานอยู่เวรทั้ง 3 ชุดต่อวัน แสดงเป็นชื่อเล่น ดูง่ายแบบปฏิทิน</p></div></div>
       <div class="panel no-print">
         <div class="row-flex">
@@ -391,10 +409,21 @@ body.printing-form #printFormArea{display:block;}
       </div>
       <div class="cal-mode-banner hidden no-print" id="calModeBanner"></div>
       <div class="panel scroll-x"><div id="calendarBox" class="empty-hint">เลือกเดือนเพื่อดูปฏิทินเวร</div></div>
+
+      <details class="panel opt-panel no-print" id="swapHistoryPanel">
+        <summary>📜 ประวัติการแลกเวร <span class="opt-count">(อนุมัติแล้ว เรียงล่าสุดก่อน — สมาชิกทุกคนเห็นเหมือนกัน)</span></summary>
+        <div class="opt-body"><div id="swapHistoryBox" class="empty-hint">กำลังโหลด...</div></div>
+      </details>
     </section>
 
     <section class="view" id="view-staff">
       <div class="page-head"><div><h2>จัดการพนักงาน</h2><p>เพิ่ม / ลบ / เลื่อนลำดับพนักงานแต่ละกลุ่มเวร</p></div></div>
+
+      <details class="panel opt-panel" id="overviewPanelDetails">
+        <summary>📊 ภาพรวมเวรประจำเดือน</summary>
+        <div class="opt-body"><div id="overviewPanel">กำลังโหลดข้อมูล...</div></div>
+      </details>
+
       <div class="group-tabs" id="staffGroupTabs"></div>
       <div class="panel">
         <h3>เพิ่มพนักงานในกลุ่มนี้</h3>
@@ -576,10 +605,6 @@ body.printing-form #printFormArea{display:block;}
       </div>
     </section>
 
-    <section class="view" id="view-swaphistory">
-      <div class="page-head"><div><h2>ประวัติการแลกเวร</h2><p>รายการแลกเวรที่อนุมัติแล้ว เรียงล่าสุดก่อน — สมาชิกทุกคนเห็นเหมือนกัน</p></div></div>
-      <div class="panel scroll-x"><div id="swapHistoryBox" class="empty-hint">กำลังโหลด...</div></div>
-    </section>
   </main>
 </div>
 
@@ -956,12 +981,11 @@ document.getElementById("sidebarBackdrop").onclick = closeMobileSidebar;
 function switchView(name) {
   document.querySelectorAll(".nav-item").forEach((i) => i.classList.toggle("active", i.dataset.view === name));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
-  if (name === "overview") renderOverview();
-  if (name === "calendar") renderCalendar();
+  if (name === "calendar") { renderCalendar(); renderSwapHistory(); }
   if (name === "holidays") renderHolidayList();
   if (name === "myschedule") renderMySchedule();
   if (name === "swap") renderSwapView();
-  if (name === "swaphistory") renderSwapHistory();
+  if (name === "staff") renderOverview();
   if (currentRole) refreshSwapBadge();
 }
 
@@ -1009,12 +1033,7 @@ async function handleAuthUser(user) {
   document.querySelectorAll(".admin-only").forEach((el) => el.style.display = currentRole === "admin" ? "" : "none");
   document.querySelectorAll(".staff-only").forEach((el) => el.style.display = (currentRole === "staff" || isStaffToo) ? "" : "none");
 
-  if (currentRole === "staff") {
-    switchView("myschedule");
-  } else {
-    switchView("overview");
-    renderOverview();
-  }
+  switchView("calendar");
 
   buildGroupTabs("staffGroupTabs", onStaffTabSelect);
   buildGroupTabs("scheduleGroupTabs", onScheduleTabSelect);
@@ -1872,15 +1891,27 @@ async function getAllSwapRequests() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 // ช่องในตารางที่ได้มาจากการแลกเวรที่อนุมัติแล้ว: key = "วัน_ช่วง_staffIdที่ได้เวรนั้น"
+// เทียบตารางปัจจุบันกับฉบับเสนอลงนาม (ต้นฉบับ) ทีละช่อง — ติด ⇄ เฉพาะช่องที่ "ตอนนี้" เป็นคนละคนกับต้นฉบับเท่านั้น
+// ถ้าแลกไปแลกมาแล้ววนกลับมาเป็นคนเดิมตามต้นฉบับ ถือว่าไม่มีอะไรเปลี่ยน จะไม่ติดสัญลักษณ์ให้
 async function getSwappedCellKeys(yyyyMm) {
   const keys = new Set();
   try {
-    const snap = await getDocs(query(collection(db, "swapRequests"), where("status", "==", "approved")));
-    snap.docs.forEach((d) => {
-      const r = d.data();
-      if (r.from && r.from.yyyyMm === yyyyMm) keys.add(`${r.from.day}_${r.from.shift}_${r.toStaffId}`);
-      if (r.type === "swap" && r.to && r.to.yyyyMm === yyyyMm) keys.add(`${r.to.day}_${r.to.shift}_${r.fromStaffId}`);
-    });
+    if (!allGroups.length) allGroups = await getGroups();
+    for (const g of allGroups) {
+      const orig = await loadOriginalSchedule(g.id, yyyyMm);
+      if (!orig) continue;
+      const origA = orig.assignments || {};
+      const current = (await loadSchedule(g.id, yyyyMm)) || {};
+      const days = new Set([...Object.keys(origA), ...Object.keys(current)]);
+      days.forEach((day) => {
+        const o = origA[day] || [];
+        const c = current[day] || [];
+        for (let shift = 0; shift < 3; shift++) {
+          const cur = c[shift];
+          if (cur && cur !== o[shift]) keys.add(`${day}_${shift}_${cur}`);
+        }
+      });
+    }
   } catch (e) { /* ไม่มีสิทธิ์อ่านหรือยังไม่มีข้อมูล — แสดงปฏิทินปกติ */ }
   return keys;
 }
