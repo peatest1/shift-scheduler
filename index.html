@@ -344,15 +344,20 @@ body.printing-form #printFormArea{display:block;}
   .opt-panel summary{font-size:17px;padding:14px 16px;}
   .opt-body{padding:14px 16px 16px;}
   .cal-mode-banner{font-size:14.5px;}
-  /* หน้าเข้าสู่ระบบ/สมัครสมาชิก: ขยายโลโก้และตัวอักษรให้เหมาะกับจอมือถือ ไม่ให้ดูเล็ก */
-  .auth-wrap{padding:16px;}
-  .auth-card{padding:38px 26px 30px;max-width:440px;}
-  .pea-badge-lg{width:128px;height:128px;}
-  .auth-title{font-size:25px;}
-  .auth-sub{font-size:15.5px;margin-bottom:26px;}
-  .tab-row .tab-btn{font-size:16.5px;padding:13px 0;}
-  .checkbox-row{font-size:14.5px;}
-  .msg{font-size:14.5px;padding:10px 12px;}
+  /* หน้าเข้าสู่ระบบ/สมัครสมาชิก: ขยายโลโก้และตัวอักษรให้ใหญ่ขึ้นชัดเจน เหมือนซูมเข้าจอมือถือ */
+  .auth-wrap{padding:14px;}
+  .auth-card{padding:40px 22px 32px;max-width:460px;}
+  .pea-badge-lg{width:156px;height:156px;}
+  .auth-title{font-size:29px;}
+  .auth-sub{font-size:17px;margin-bottom:28px;line-height:1.4;}
+  .tab-row{margin-bottom:26px;}
+  .tab-row .tab-btn{font-size:18.5px;padding:15px 0;}
+  .auth-card .field{margin-bottom:18px;}
+  .auth-card .field label{font-size:16.5px;margin-bottom:7px;}
+  .auth-card .field input,.auth-card .field select{font-size:18.5px;padding:15px 14px;}
+  .auth-card .btn{font-size:18px;padding:16px 18px;}
+  .checkbox-row{font-size:16px;}
+  .msg{font-size:16px;padding:11px 13px;}
 }
 @media (max-width:380px){
   .nav-item{font-size:15.5px;padding:14px 18px;}
@@ -2270,15 +2275,19 @@ async function renderSwapHistory() {
   const appleIcon = document.getElementById("appleIconLink");
   const img = new Image();
   img.onload = () => {
-    const size = 192;
+    // ใช้ canvas ความละเอียดสูง (ใหญ่กว่าโลโก้ต้นฉบับ) แล้ว "ไม่ขยาย" โลโก้เกินขนาดจริงของมัน
+    // (จำกัด scale <=1) เพื่อไม่ให้ตัวอักษร PEA ในโลโก้เบลอตอนถูกนำไปแสดงเป็นไอคอนขนาดใหญ่บนจอโฮม
+    const size = 512;
     const canvas = document.createElement("canvas");
     canvas.width = size; canvas.height = size;
     const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.fillStyle = "#0B3D39";
     ctx.fillRect(0, 0, size, size);
-    const pad = size * 0.12;
+    const pad = size * 0.14;
     const drawArea = size - pad * 2;
-    const scale = Math.min(drawArea / img.width, drawArea / img.height);
+    const scale = Math.min(drawArea / img.width, drawArea / img.height, 1);
     const w = img.width * scale, h = img.height * scale;
     ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
     const dataUrl = canvas.toDataURL("image/png");
