@@ -126,11 +126,13 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .legend span{display:inline-flex;align-items:center;gap:4px;margin-right:14px;}
 .swatch{width:10px;height:10px;display:inline-block;border:1px solid var(--line);}
 
-/* ---------- month calendar ---------- */
-.cal-table{table-layout:fixed;}
-.cal-table th{background:var(--teal-900);color:#fff;padding:10px 4px;font-size:15px;font-weight:700;letter-spacing:.5px;}
-.cal-table td{vertical-align:top;padding:0;height:1px;}
-.cal-day{padding:5px 6px;min-height:118px;}
+/* ---------- month calendar (CSS grid — not a <table>, so it reflows cleanly on any browser incl. mobile Safari) ---------- */
+.cal-grid{width:100%;}
+.cal-head-row{display:grid;grid-template-columns:repeat(7,1fr);}
+.cal-head-cell{background:var(--teal-900);color:#fff;padding:10px 4px;font-size:15px;font-weight:700;letter-spacing:.5px;text-align:center;}
+.cal-body{display:grid;grid-template-columns:repeat(7,1fr);}
+.cal-cell{border:1px solid var(--line);vertical-align:top;}
+.cal-day{padding:5px 6px;min-height:118px;height:100%;}
 .cal-daynum{font-weight:800;font-size:20px;text-align:center;padding:5px 0;background:#EFEAE0;color:#101613;}
 .cal-dow-label{display:none;}
 .cal-daynum.sat{background:#CFE3F2;color:#0B3D39;}
@@ -138,7 +140,7 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .cal-day.is-holiday{background:var(--amber-100);}
 .cal-day.is-holiday .cal-daynum{background:var(--amber-500);color:#fff;}
 .cal-daynum.today{outline:3px solid var(--teal-500);outline-offset:-3px;}
-.cal-empty{background:#8C8C8C;}
+.cal-cell.cal-empty{background:#8C8C8C;border-color:#8C8C8C;}
 .cal-shift-row{font-size:19px;font-weight:700;color:#0C1210;text-align:center;padding:5px 4px;border-top:1px dashed #B7B0A0;white-space:normal;word-break:break-word;line-height:1.32;}
 .cal-shift-row.dash{color:#8A8378;font-weight:400;font-size:16px;}
 .cal-holiday-name{font-size:13px;color:#7A4E10;text-align:center;padding:2px 3px 4px;font-weight:700;}
@@ -290,18 +292,18 @@ body.printing-form #printFormArea{display:block;}
   }
   .sidebar.open{transform:translateX(0);}
   .nav-item{font-size:18px;padding:16px 22px;}
-  .nav-badge{font-size:13.5px;}
-  .who{font-size:14px;}
+  .nav-badge{font-size:14.5px;}
+  .who{font-size:15px;}
   .sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;}
   .sidebar-backdrop.show{display:block;}
   .sidebar .brand{display:none !important;}
   .main{padding:16px 14px 44px;}
   .page-head{margin-bottom:16px;}
   .page-head h2{font-size:22px;}
-  .page-head p{font-size:14.5px;}
+  .page-head p{font-size:15.5px;}
   .row-flex{gap:10px;}
   .field{min-width:0 !important;flex:1 1 100% !important;}
-  .field label{font-size:14.5px;}
+  .field label{font-size:15px;}
   .field input,.field select{font-size:17px;padding:12px 13px;}
   .row-flex .field{flex:1 1 100%;max-width:none !important;}
   .btn{padding:13px 16px;font-size:16px;}
@@ -310,25 +312,21 @@ body.printing-form #printFormArea{display:block;}
   .tb-group{gap:8px;width:100%;}
   .tb-field{flex:1 1 auto;}
   .panel{padding:16px;}
-  .panel h3{font-size:16px;}
-  table{font-size:14px;}
-  /* ปฏิทินเวร: พับตารางรายสัปดาห์ (7 คอลัมน์) ให้เป็นรายการวันเรียงลงมาทีละวัน อ่านง่ายบนจอแคบ ไม่ต้องซูม */
-  .cal-table,.cal-table tr,.cal-table th,.cal-table td{display:block;width:100%;}
-  .cal-table .cal-head-row{display:none;}
-  .cal-table td{border:none;padding:0;height:auto;}
-  .cal-table td.cal-empty{display:none;}
-  .cal-day{min-height:0;padding:14px 16px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;column-gap:12px;background:#fff;}
-  .cal-day.is-holiday{background:var(--amber-100);}
-  .cal-daynum{flex:none;width:auto;min-width:44px;height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:18px;padding:2px 8px;border-radius:10px;line-height:1.05;}
-  .cal-dow-label{display:block;font-size:10.5px;font-weight:600;opacity:.85;}
-  .cal-holiday-name{flex:1;min-width:0;text-align:left;padding:0;font-size:13.5px;}
-  .cal-shift-row{flex:1 1 100%;text-align:left;font-size:16.5px;padding:6px 0 0;border-top:1px dashed #D8D2C2;margin-top:6px;line-height:1.35;}
-  .cal-shift-1{border-top:none;margin-top:0;padding-top:2px;}
-  .cal-shift-row.dash{font-size:13.5px;}
-  .cal-shift-row::before{display:block;font-size:11px;font-weight:700;color:var(--ink-soft);letter-spacing:.3px;}
-  .cal-shift-1::before{content:"ช่วง 1";}
-  .cal-shift-2::before{content:"ช่วง 2";}
-  .cal-shift-3::before{content:"ช่วง 3";}
+  .panel h3{font-size:17px;}
+  table{font-size:15px;}
+  /* ปฏิทินเวร: คงกริด 7 คอลัมน์ไว้เหมือนเดสก์ท็อป แต่ย่อขนาดตัวอักษร/ระยะห่างให้พอดีความกว้างจอมือถือพอดี ไม่ล้นจอ ไม่ต้องเลื่อนซ้ายขวา */
+  .cal-grid{min-width:0;}
+  .cal-head-row{grid-template-columns:repeat(7,minmax(0,1fr));}
+  .cal-head-cell{font-size:10.5px;padding:6px 1px;letter-spacing:0;}
+  .cal-body{grid-template-columns:repeat(7,minmax(0,1fr));}
+  .cal-cell{min-width:0;}
+  .cal-day{min-height:72px;padding:2px 2px 4px;}
+  .cal-daynum{font-size:12px;padding:2px 0;min-width:0;width:100%;border-radius:0;}
+  .cal-dow-label{display:none;}
+  .cal-holiday-name{font-size:8.5px;padding:1px 1px 2px;line-height:1.15;word-break:break-all;overflow-wrap:anywhere;}
+  .cal-shift-row{font-size:10px;padding:2px 1px 0;border-top:1px dotted #E3DECE;margin-top:2px;line-height:1.18;word-break:break-all;overflow-wrap:anywhere;}
+  .cal-shift-row.dash{font-size:9px;}
+  .cal-shift-row::before{display:none;}
   .legend{font-size:13px;}
   .cal-controls-row{gap:8px;}
   .cal-month-field{max-width:none;}
@@ -339,17 +337,20 @@ body.printing-form #printFormArea{display:block;}
   .swap-card{font-size:15.5px;}
   .swap-line{flex-direction:column;align-items:stretch;}
   .swap-arrow{align-self:center;transform:rotate(90deg);}
-  .status-pill{font-size:13px;}
+  .status-pill{font-size:14px;}
   .modal-box{padding:18px;}
-  .modal-box h3{font-size:18px;}
-  .opt-panel summary{font-size:16px;padding:14px 16px;}
+  .modal-box h3{font-size:19px;}
+  .opt-panel summary{font-size:17px;padding:14px 16px;}
   .opt-body{padding:14px 16px 16px;}
+  .cal-mode-banner{font-size:14.5px;}
 }
 @media (max-width:380px){
   .nav-item{font-size:15.5px;padding:14px 18px;}
   .page-head h2{font-size:18.5px;}
-  .cal-daynum{min-width:40px;height:40px;font-size:16.5px;}
-  .cal-shift-row{font-size:15px;}
+  .cal-head-cell{font-size:9px;padding:5px 1px;}
+  .cal-daynum{font-size:10.5px;}
+  .cal-holiday-name{font-size:7.5px;}
+  .cal-shift-row{font-size:8.5px;}
 }
 </style>
 </head>
@@ -1526,7 +1527,7 @@ async function renderCalendar() {
   const todayStr = todayISO(new Date().getFullYear(), new Date().getMonth() + 1, new Date().getDate());
 
   const weekNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-  let head = "<tr class=\"cal-head-row\">" + weekNames.map((w) => `<th>${w}</th>`).join("") + "</tr>";
+  let head = weekNames.map((w) => `<div class="cal-head-cell">${w}</div>`).join("");
 
   const cells = [];
   for (let i = 0; i < firstDow; i++) cells.push(null);
@@ -1535,10 +1536,9 @@ async function renderCalendar() {
 
   let body = "";
   for (let w = 0; w < cells.length / 7; w++) {
-    body += "<tr>";
     for (let c = 0; c < 7; c++) {
       const d = cells[w * 7 + c];
-      if (d === null) { body += `<td class="cal-empty"></td>`; continue; }
+      if (d === null) { body += `<div class="cal-cell cal-empty"></div>`; continue; }
       const dateObj = new Date(y, m - 1, d);
       const dow = dateObj.getDay();
       const iso = todayISO(y, m, d);
@@ -1573,18 +1573,17 @@ async function renderCalendar() {
           });
         rows += `<div class="cal-shift-row cal-shift-${shiftIdx + 1}">${names.length ? names.join(" ") : "-"}</div>`;
       }
-      body += `<td>
+      body += `<div class="cal-cell">
         <div class="cal-day${isHoliday ? " is-holiday" : ""}" ${isHoliday ? `title="${holidaysMap[iso]}"` : ""}>
           <div class="cal-daynum${dayNumClass}${iso === todayStr ? " today" : ""}">${d}<span class="cal-dow-label">${THAI_DOW[dow]}</span></div>
           ${isHoliday ? `<div class="cal-holiday-name">${holidaysMap[iso]}</div>` : ""}
           ${rows}
         </div>
-      </td>`;
+      </div>`;
     }
-    body += "</tr>";
   }
 
-  box.innerHTML = `<table class="cal-table">${head}${body}</table>
+  box.innerHTML = `<div class="cal-grid"><div class="cal-head-row">${head}</div><div class="cal-body">${body}</div></div>
     <p class="legend">ชื่อที่มีเครื่องหมาย ⇄ = ได้เวรนั้นมาจากการแลกเวรที่อนุมัติแล้ว (ดูรายละเอียดที่เมนู "ประวัติการแลกเวร")${currentStaffProfile ? " · ชื่อของคุณจะไฮไลท์สีส้ม" : ""}</p>`;
   box.querySelectorAll(".cal-name").forEach((el) => { el.onclick = () => onCalNameClick(el); });
   updateCalModeBanner();
