@@ -25,6 +25,7 @@ a{color:inherit;}
 .auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(circle at 30% 20%,#0F5C55 0%,#0B3D39 55%,#082A27 100%);}
 .auth-card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:32px 28px;box-shadow:0 12px 40px rgba(0,0,0,.35);}
 .auth-card .brand{display:flex;align-items:baseline;gap:8px;margin-bottom:4px;}
+.auth-title{font-size:19px;}
 .brand-mark{width:10px;height:10px;background:var(--amber-500);display:inline-block;flex:none;}
 
 /* ---------- animated PEA outage-maintenance badge: flickering lightning bolts ---------- */
@@ -343,6 +344,15 @@ body.printing-form #printFormArea{display:block;}
   .opt-panel summary{font-size:17px;padding:14px 16px;}
   .opt-body{padding:14px 16px 16px;}
   .cal-mode-banner{font-size:14.5px;}
+  /* หน้าเข้าสู่ระบบ/สมัครสมาชิก: ขยายโลโก้และตัวอักษรให้เหมาะกับจอมือถือ ไม่ให้ดูเล็ก */
+  .auth-wrap{padding:16px;}
+  .auth-card{padding:38px 26px 30px;max-width:440px;}
+  .pea-badge-lg{width:128px;height:128px;}
+  .auth-title{font-size:25px;}
+  .auth-sub{font-size:15.5px;margin-bottom:26px;}
+  .tab-row .tab-btn{font-size:16.5px;padding:13px 0;}
+  .checkbox-row{font-size:14.5px;}
+  .msg{font-size:14.5px;padding:10px 12px;}
 }
 @media (max-width:380px){
   .nav-item{font-size:15.5px;padding:14px 18px;}
@@ -370,7 +380,7 @@ body.printing-form #printFormArea{display:block;}
         <img class="pea-logo-img" id="pfLogoLogin" alt="PEA">
       </div>
     </div>
-    <div class="brand" style="justify-content:center;"><h1 style="font-size:19px;">ระบบจัดเวร กฟภ.</h1></div>
+    <div class="brand" style="justify-content:center;"><h1 class="auth-title">ระบบจัดเวร กฟภ.</h1></div>
     <p class="auth-sub" style="text-align:center;">จัดเวรพนักงานแก้ไขกระแสไฟฟ้าขัดข้อง</p>
     <div class="tab-row">
       <button class="tab-btn active" id="tabLoginBtn">เข้าสู่ระบบ</button>
@@ -2255,10 +2265,32 @@ async function renderSwapHistory() {
   if (sidebarImg) sidebarImg.src = src;
   if (loginImg) loginImg.src = src;
   // ใช้โลโก้เดียวกันเป็นไอคอนแท็บเบราว์เซอร์ / ไอคอนเวลาเพิ่มหน้าเว็บลงหน้าจอโฮมมือถือ
+  // วาดโลโก้ลงบนพื้นหลังสีเขียวเข้มของแบรนด์แทนพื้นขาวที่ iOS เติมให้อัตโนมัติกับ PNG โปร่งใส
   const favicon = document.getElementById("faviconLink");
   const appleIcon = document.getElementById("appleIconLink");
-  if (favicon) favicon.href = src;
-  if (appleIcon) appleIcon.href = src;
+  const img = new Image();
+  img.onload = () => {
+    const size = 192;
+    const canvas = document.createElement("canvas");
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#0B3D39";
+    ctx.fillRect(0, 0, size, size);
+    const pad = size * 0.12;
+    const drawArea = size - pad * 2;
+    const scale = Math.min(drawArea / img.width, drawArea / img.height);
+    const w = img.width * scale, h = img.height * scale;
+    ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+    const dataUrl = canvas.toDataURL("image/png");
+    if (favicon) favicon.href = dataUrl;
+    if (appleIcon) appleIcon.href = dataUrl;
+  };
+  img.onerror = () => {
+    // เผื่อวาดลง canvas ไม่ได้ (เช่นถูกบล็อก) ใช้โลโก้ดิบแทน ดีกว่าไม่มีไอคอนเลย
+    if (favicon) favicon.href = src;
+    if (appleIcon) appleIcon.href = src;
+  };
+  img.src = src;
 })();
 </script>
 </body>
