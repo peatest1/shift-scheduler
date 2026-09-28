@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover">
 <title>ระบบจัดเวร กฟภ.</title>
 <meta name="theme-color" content="#0B3D39">
 <link rel="icon" type="image/png" id="faviconLink">
@@ -17,6 +17,8 @@
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+.auth-wrap{overflow-x:hidden;}
 body{font-family:'Sarabun',sans-serif;background:var(--paper);color:var(--ink);font-size:15px;line-height:1.5;}
 h1,h2,h3{font-weight:600;margin:0 0 4px;}
 a{color:inherit;}
@@ -406,6 +408,7 @@ body.printing-form #printFormArea{display:block;}
       <button class="btn btn-primary" type="submit">สมัครสมาชิก</button>
       <p class="auth-sub" style="margin-top:12px;">* พนักงานทั่วไปต้องให้แอดมินเพิ่มชื่อ-รหัสพนักงานในระบบก่อน จึงจะสมัครสมาชิกผูกกับรหัสพนักงานนั้นได้</p>
     </form>
+    <p id="diagInfo" style="text-align:center;font-size:11px;color:#8A8378;margin:18px 0 0;"></p>
   </div>
 </div>
 
@@ -2300,6 +2303,32 @@ async function renderSwapHistory() {
     if (appleIcon) appleIcon.href = src;
   };
   img.src = src;
+})();
+
+// ==========================================================================
+// 17) กันหน้าเว็บถูกย่อเล็กบนมือถือ (Safari ย่อหน้าให้พอดีเมื่อ layout กว้างกว่าจอ / โหมดเดสก์ท็อป)
+//     ถ้า layout กว้างกว่าหน้าจอจริงมาก ให้บังคับ viewport = ความกว้างจอจริง + แสดงค่าวินิจฉัยเล็กๆ ใต้ฟอร์มล็อกอิน
+// ==========================================================================
+(function fitViewport() {
+  try {
+    const meta = document.querySelector('meta[name="viewport"]');
+    const devW = Math.min(screen.width, screen.height);
+    const touch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    const portrait = window.matchMedia("(orientation: portrait)").matches;
+    let forced = false;
+    if (meta && touch && portrait && devW <= 600 && window.innerWidth > devW * 1.15) {
+      meta.setAttribute("content", "width=" + devW + ", initial-scale=1, minimum-scale=1, viewport-fit=cover");
+      forced = true;
+    }
+    const d = document.getElementById("diagInfo");
+    const show = () => {
+      if (!d) return;
+      const vv = window.visualViewport;
+      d.textContent = "จอ " + devW + "px · layout " + window.innerWidth + "px · scale " + (vv ? vv.scale.toFixed(2) : "-") + (forced ? " · fit" : "");
+    };
+    show();
+    setTimeout(show, 600);
+  } catch (e) { /* ignore */ }
 })();
 </script>
 </body>
