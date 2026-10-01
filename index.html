@@ -449,6 +449,14 @@ body.printing-form #printFormArea{display:block;}
   <main class="main">
     <section class="view active" id="view-calendar">
       <div class="page-head"><div><h2>ปฏิทินเวร</h2><p>รวมเวรพนักงานอยู่เวรทั้ง 3 ชุดต่อวัน แสดงเป็นชื่อเล่น ดูง่ายแบบปฏิทิน</p></div></div>
+      <div class="panel no-print admin-link-box hidden">
+        <h3>🔗 ผูกบัญชีแอดมินกับรายชื่อพนักงาน</h3>
+        <p class="auth-sub" style="margin-bottom:12px;">บัญชีแอดมินนี้ยังไม่ได้ผูกกับชื่อพนักงานในตารางเวร จึงยังแลกเวร/ฝากเวรไม่ได้ เลือกชื่อของคุณแล้วกดผูกบัญชี (ทำครั้งเดียว)</p>
+        <div class="row-flex" style="align-items:flex-end;">
+          <div class="field grow" style="margin-bottom:0;"><label>ชื่อของคุณในรายชื่อพนักงาน</label><select class="admin-link-select"></select></div>
+          <button class="btn btn-primary admin-link-btn" style="width:auto;">ผูกบัญชี</button>
+        </div>
+      </div>
       <div class="panel no-print">
         <div class="cal-controls-row">
           <div class="field cal-month-field"><label>เดือน</label><input type="month" id="calendarMonthInput"></div>
@@ -615,6 +623,14 @@ body.printing-form #printFormArea{display:block;}
 
     <section class="view" id="view-swap">
       <div class="page-head"><div><h2>แลกเวร</h2><p>ส่งคำขอ → เพื่อนตอบรับ → แอดมินอนุมัติ → ตารางเวรและปฏิทินเวรอัปเดตให้อัตโนมัติ</p></div></div>
+      <div class="panel no-print admin-link-box hidden">
+        <h3>🔗 ผูกบัญชีแอดมินกับรายชื่อพนักงาน</h3>
+        <p class="auth-sub" style="margin-bottom:12px;">บัญชีแอดมินนี้ยังไม่ได้ผูกกับชื่อพนักงานในตารางเวร จึงยังแลกเวร/ฝากเวรไม่ได้ เลือกชื่อของคุณแล้วกดผูกบัญชี (ทำครั้งเดียว)</p>
+        <div class="row-flex" style="align-items:flex-end;">
+          <div class="field grow" style="margin-bottom:0;"><label>ชื่อของคุณในรายชื่อพนักงาน</label><select class="admin-link-select"></select></div>
+          <button class="btn btn-primary admin-link-btn" style="width:auto;">ผูกบัญชี</button>
+        </div>
+      </div>
 
       <div class="tab-row swap-tabs no-print" id="swapTabs">
         <button class="tab-btn staff-only" data-swap-tab="send">ส่งคำขอ</button>
@@ -1093,7 +1109,7 @@ async function handleAuthUser(user) {
   if (empId) {
     for (const g of allGroups) {
       const list = await getStaffByGroup(g.id);
-      const found = list.find((s) => s.empId === empId);
+      const found = list.find((s) => s.empId != null && String(s.empId).trim() === String(empId).trim());
       if (found) { currentStaffProfile = { ...found, groupName: g.name }; break; }
     }
   }
@@ -1109,6 +1125,7 @@ async function handleAuthUser(user) {
     (currentRole === "admin" ? (isStaffToo ? "แอดมิน + พนักงาน" : "แอดมิน") : "พนักงาน") + " · " + user.email;
   document.querySelectorAll(".admin-only").forEach((el) => el.style.display = currentRole === "admin" ? "" : "none");
   document.querySelectorAll(".staff-only").forEach((el) => el.style.display = (currentRole === "staff" || isStaffToo) ? "" : "none");
+  renderAdminLinkBox(currentRole === "admin" && !isStaffToo);
 
   switchView("calendar");
 
@@ -2300,6 +2317,45 @@ async function renderSwapHistory() {
     setTimeout(show, 600);
   } catch (e) { /* ignore */ }
 })();
+
+// ==========================================================================
+// แอดมินที่ยังไม่ผูกกับรายชื่อพนักงาน: ให้เลือกชื่อตัวเองแล้วผูกบัญชี เพื่อเปิดใช้แลกเวร/ฝากเวร
+// ==========================================================================
+async function renderAdminLinkBox(show) {
+  const boxes = document.querySelectorAll(".admin-link-box");
+  boxes.forEach((b) => b.classList.toggle("hidden", !show));
+  if (!show) return;
+  const groups = allGroups.length ? allGroups : await getGroups();
+  let opts = `<option value="">-- เลือกชื่อของคุณ --</option>`;
+  for (const g of groups) {
+    const list = await getStaffByGroup(g.id);
+    if (!list.length) continue;
+    opts += `<optgroup label="${escapeHtml(g.name)}">` + list.map((st) =>
+      `<option value="${st.id}" data-group="${g.id}">${escapeHtml(staffDisplayName(st))}${st.empId ? " · " + escapeHtml(String(st.empId)) : ""}${st.linkedUid && st.linkedUid !== currentUid ? " (ผูกบัญชีอื่นแล้ว)" : ""}</option>`).join("") + `</optgroup>`;
+  }
+  boxes.forEach((b) => {
+    b.querySelector(".admin-link-select").innerHTML = opts;
+    b.querySelector(".admin-link-btn").onclick = () => linkAdminToStaff(b.querySelector(".admin-link-select").value);
+  });
+}
+async function linkAdminToStaff(staffId) {
+  if (!staffId) { alert("กรุณาเลือกชื่อของคุณ"); return; }
+  const everyone = await getAllStaff();
+  const st = everyone.find((x) => x.id === staffId);
+  if (!st) { alert("ไม่พบรายชื่อนี้"); return; }
+  if (st.linkedUid && st.linkedUid !== currentUid &&
+      !confirm(`รายชื่อ "${staffDisplayName(st)}" ผูกกับบัญชีอื่นอยู่แล้ว (เช่นบัญชีพนักงานที่เคยสมัครไว้) ต้องการย้ายมาผูกกับบัญชีแอดมินนี้แทนหรือไม่?`)) return;
+  try {
+    let empId = st.empId != null && String(st.empId).trim() ? String(st.empId).trim() : null;
+    if (!empId) { empId = "ADMIN-" + currentUid.slice(0, 8); await updateDoc(doc(db, "staff", st.id), { empId }); }
+    await updateDoc(doc(db, "users", currentUid), { empId });
+    await updateDoc(doc(db, "staff", st.id), { linkedUid: currentUid });
+    alert("ผูกบัญชีเรียบร้อย ตอนนี้แลกเวร/ฝากเวรได้แล้ว");
+    await handleAuthUser(auth.currentUser);
+  } catch (e) {
+    alert("ผูกบัญชีไม่สำเร็จ: " + friendlyError(e) + (String(e.code || "").includes("permission") ? "\nกฎความปลอดภัยของ Firestore อาจไม่อนุญาตให้แก้ข้อมูลผู้ใช้ — ให้เพิ่มช่อง empId ในเอกสาร users ของคุณผ่าน Firebase Console แทน" : ""));
+  }
+}
 </script>
 </body>
 </html>
