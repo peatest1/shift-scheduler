@@ -1755,6 +1755,25 @@ async function openSwapConfirmModal(theirs) {
 // สร้างคำขอแลกเวร/ฝากเวร (ใช้ร่วมกันทั้งฟอร์มดรอปดาวน์และการจิ้มเลือกจากปฏิทิน)
 async function submitSwapRequest({ type, mine, target, theirs, reason }) {
   const meStaff = currentStaffProfile;
+  // ตรวจก่อนส่ง: กฎความปลอดภัยของ Firestore ยอมให้ส่งคำขอได้เฉพาะเมื่อรายชื่อพนักงานของเรา "ผูกกับบัญชีที่ล็อกอินอยู่"
+  // และรายชื่อของอีกฝ่ายผูกกับบัญชีของเขาแล้ว — เช็คกับข้อมูลล่าสุดในฐานข้อมูลเพื่อบอกสาเหตุให้ชัด แทนข้อความ "ไม่มีสิทธิ์"
+  try {
+    const everyone = await getAllStaff();
+    const meNow = everyone.find((x) => x.id === meStaff.id);
+    const targetNow = everyone.find((x) => x.id === target.id);
+    if (!targetNow || !targetNow.linkedUid) { alert(`${staffDisplayName(target)} ยังไม่ได้สมัครสมาชิก/ผูกบัญชี จึงรับคำขอไม่ได้`); return false; }
+    if (targetNow.linkedUid === currentUid) { alert("ส่งคำขอถึงตัวเองไม่ได้"); return false; }
+    target = { ...target, linkedUid: targetNow.linkedUid };
+    if (!meNow || meNow.linkedUid !== currentUid) {
+      if (currentRole !== "admin") { alert("รายชื่อพนักงานของคุณผูกกับบัญชีอื่นอยู่ กรุณาติดต่อแอดมิน"); return false; }
+      const msg = meNow && meNow.linkedUid
+        ? `รายชื่อ "${staffDisplayName(meStaff)}" ผูกอยู่กับบัญชีอื่น (เช่นบัญชีพนักงานที่เคยสมัครไว้) จึงส่งคำขอจากบัญชีแอดมินนี้ไม่ได้\n\nต้องการย้ายมาผูกกับบัญชีแอดมินนี้แทนหรือไม่? (คำขอแลกเวรที่ส่งถึงคุณจะมาที่บัญชีนี้แทน)`
+        : `รายชื่อ "${staffDisplayName(meStaff)}" ยังไม่ได้ผูกกับบัญชีนี้ ต้องการผูกตอนนี้เลยหรือไม่?`;
+      if (!confirm(msg)) return false;
+      await updateDoc(doc(db, "staff", meStaff.id), { linkedUid: currentUid });
+      currentStaffProfile.linkedUid = currentUid;
+    }
+  } catch (e) { alert("ตรวจสอบข้อมูลก่อนส่งไม่สำเร็จ: " + friendlyError(e)); return false; }
   const targetGroupName = allGroups.find((g) => g.id === target.groupId)?.name || "";
   const payload = {
     type, status: "pending", reason, createdAt: Date.now(),
