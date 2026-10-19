@@ -561,10 +561,10 @@ body.printing-form #printFormArea{display:block;}
           <summary>⚙️ ตัวเลือกการสุ่ม <span class="opt-count" id="randomOptsCount"></span></summary>
           <div class="opt-body">
             <div class="field"><label>ให้ใครได้เวรแรก (วันที่ 1 ช่วง1)</label><select id="startStaffSelect"></select></div>
-            <label class="opt-sub">เว้นคนเฉพาะวัน — ถ้าถึงคิวคนนั้นในวันที่ระบุ จะข้ามไปคนถัดไปแล้วหมุนต่อปกติ</label>
+            <label class="opt-sub">เว้นคนเฉพาะวัน — ใส่วันที่ก่อน ระบบจะแสดงเฉพาะคนที่ "ถึงคิวอยู่เวร" ในวันนั้นจริงๆ ให้เลือกเว้น (คนที่ไม่ได้อยู่เวรวันนั้นจะไม่มีให้เลือก เพราะเว้นไปก็ไม่มีผล) แล้วระบบจะข้ามไปคนถัดไปและหมุนต่อปกติ</label>
             <div class="row-flex">
-              <div class="field grow"><select id="skipStaffSelect"></select></div>
-              <div class="field"><input type="number" id="skipDayInput" min="1" max="31" placeholder="วันที่" style="width:80px;"></div>
+              <div class="field"><input type="number" id="skipDayInput" min="1" max="31" placeholder="วันที่" style="width:90px;"></div>
+              <div class="field grow"><select id="skipStaffSelect" disabled><option value="">-- ใส่วันที่ก่อน --</option></select></div>
               <div class="field"><button class="btn btn-ghost btn-small" id="addSkipRuleBtn">+ เพิ่ม</button></div>
             </div>
             <div id="skipRulesList"></div>
@@ -896,7 +896,7 @@ function generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex, ski
   if (n === 0) return assignments;
   const [y, m] = yyyyMm.split("-").map(Number);
   let pointer = (startIndex !== null && startIndex !== undefined) ? startIndex : (m % n);
-  // เว้นคนเฉพาะวัน: day -> Set ของ staffId ที่ต้องข้ามไป 1 คิวถ้าถึงคิวพอดี (ใช้ได้ครั้งเดียวต่อเงื่อนไข)
+  // เว้นคนเฉพาะวัน: day -> Set ของ staffId ที่ห้ามได้เวรในวันนั้นเลย (ตรวจทุกคิว ข้ามไปเรื่อยๆ จนเจอคนที่ไม่ถูกเว้น)
   const skipMap = {};
   (skipRules || []).forEach((r) => { if (!skipMap[r.day]) skipMap[r.day] = new Set(); skipMap[r.day].add(r.staffId); });
   for (let day = 1; day <= days; day++) {
@@ -908,10 +908,11 @@ function generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex, ski
     const daySkipSet = skipMap[day];
     activeIdx.forEach((shiftIdx) => {
       let candidate = staffList[pointer % n];
-      if (daySkipSet && daySkipSet.has(candidate.id)) {
-        daySkipSet.delete(candidate.id);
+      let guard = 0;
+      while (daySkipSet && daySkipSet.has(candidate.id) && guard < n) {
         pointer++;
         candidate = staffList[pointer % n];
+        guard++;
       }
       slots[shiftIdx] = candidate.id;
       pointer++;
@@ -1070,6 +1071,7 @@ function switchView(name) {
     renderSwapView();
   }
   if (name === "staff") renderOverview();
+  if (name === "schedule" && typeof refreshSkipUI === "function") refreshSkipUI();
   if (currentRole) refreshSwapBadge();
 }
 
@@ -1307,37 +1309,102 @@ async function onScheduleTabSelect(groupId) {
   const sel = document.getElementById("startStaffSelect");
   sel.innerHTML = `<option value="">-- คนแรกในลำดับ (ค่าเริ่มต้น) --</option>` +
     staffList.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
-  const skipSel = document.getElementById("skipStaffSelect");
-  skipSel.innerHTML = staffList.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
   scheduleSkipRules = [];
-  renderSkipRulesList(staffList);
+  document.getElementById("skipDayInput").value = "";
+  await refreshSkipUI();
   renderScheduleGrid();
   renderOriginalStatus();
 }
-function renderSkipRulesList(staffList) {
+
+// ---------- เว้นคนเฉพาะวัน ----------
+// ข้อมูลที่ใช้จำลองการสุ่ม (กลุ่ม/เดือน/คนเริ่มต้น) เพื่อให้รู้ว่า "วันไหน ใครถึงคิวอยู่เวรจริง"
+async function skipContext() {
+  if (!activeScheduleGroupId) return null;
+  const staffList = await getStaffByGroup(activeScheduleGroupId);
+  const group = allGroups.find((g) => g.id === activeScheduleGroupId);
+  const yyyyMm = document.getElementById("scheduleMonthInput").value;
+  if (!group || !yyyyMm || !staffList.length) return null;
+  if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
+  const startId = document.getElementById("startStaffSelect").value;
+  const idx = startId ? staffList.findIndex((s) => s.id === startId) : -1;
+  return { staffList, group, yyyyMm, startIndex: idx >= 0 ? idx : undefined };
+}
+function rotationWith(ctx, rules) {
+  return generateRotation(ctx.staffList, ctx.group, ctx.yyyyMm, holidaysMap, ctx.startIndex, rules);
+}
+// เงื่อนไขนี้ "มีผลจริง" ถ้าไม่มีมัน คนนั้นจะได้เวรในวันนั้น
+function skipRuleHasEffect(ctx, rules, i) {
+  const without = rules.filter((_, j) => j !== i);
+  const a = rotationWith(ctx, without);
+  return (a[String(rules[i].day)] || []).includes(rules[i].staffId);
+}
+async function refreshSkipUI() {
+  const sel = document.getElementById("skipStaffSelect");
+  const dayInput = document.getElementById("skipDayInput");
   const box = document.getElementById("skipRulesList");
-  document.getElementById("randomOptsCount").textContent = scheduleSkipRules.length ? `· เว้นคน ${scheduleSkipRules.length} เงื่อนไข` : "";
+  const ctx = await skipContext();
+  const setSel = (text) => { sel.innerHTML = `<option value="">${text}</option>`; sel.disabled = true; };
+  if (!ctx) {
+    setSel("-- เลือกกลุ่ม/เดือนก่อน --");
+    box.innerHTML = `<div style="font-size:12.5px;color:var(--ink-soft);">ยังไม่มีเงื่อนไขเว้นคน</div>`;
+    document.getElementById("randomOptsCount").textContent = "";
+    return;
+  }
+  const numDays = daysInMonth(ctx.yyyyMm);
+  dayInput.max = numDays;
+  const day = Number(dayInput.value);
+  const prev = sel.value;
+  if (!day) setSel("-- ใส่วันที่ก่อน --");
+  else if (day < 1 || day > numDays || !Number.isInteger(day)) setSel(`-- เดือนนี้มีวันที่ 1–${numDays} --`);
+  else {
+    const slots = rotationWith(ctx, scheduleSkipRules)[String(day)] || [];
+    const onDuty = new Map();
+    slots.forEach((id, idx) => { if (id) onDuty.set(id, [...(onDuty.get(id) || []), idx + 1]); });
+    if (!onDuty.size) setSel("-- วันนี้ไม่มีเวรให้เว้น --");
+    else {
+      sel.innerHTML = `<option value="">-- เลือกคนที่อยู่เวรวันที่ ${day} --</option>` + [...onDuty.entries()].map(([id, shifts]) => {
+        const st = ctx.staffList.find((x) => x.id === id);
+        return `<option value="${id}">${escapeHtml(st ? st.name : "?")} — ช่วง ${shifts.join(", ")}</option>`;
+      }).join("");
+      sel.disabled = false;
+      if (prev && onDuty.has(prev)) sel.value = prev;
+    }
+  }
+  renderSkipRulesList(ctx);
+}
+function renderSkipRulesList(ctx) {
+  const box = document.getElementById("skipRulesList");
+  const useless = scheduleSkipRules.map((_, i) => !skipRuleHasEffect(ctx, scheduleSkipRules, i));
+  const nUseless = useless.filter(Boolean).length;
+  document.getElementById("randomOptsCount").textContent = scheduleSkipRules.length
+    ? `· เว้นคน ${scheduleSkipRules.length} เงื่อนไข${nUseless ? ` (⚠ ไม่มีผล ${nUseless})` : ""}` : "";
   if (!scheduleSkipRules.length) { box.innerHTML = `<div style="font-size:12.5px;color:var(--ink-soft);">ยังไม่มีเงื่อนไขเว้นคน</div>`; return; }
   box.innerHTML = scheduleSkipRules.map((r, i) => {
-    const staff = staffList.find((s) => s.id === r.staffId);
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px;">
-      <span>วันที่ ${r.day} — เว้น <strong>${staff ? staff.name : "?"}</strong> (ให้คิวถัดไปแทน)</span>
+    const staff = ctx.staffList.find((s) => s.id === r.staffId);
+    const warn = useless[i]
+      ? `<div style="color:var(--danger);font-size:12px;">⚠ ไม่มีผล — คนนี้ไม่ได้ถึงคิวอยู่เวรวันที่ ${r.day} แล้ว (คิวเปลี่ยนจากเงื่อนไขอื่น/คนเริ่มต้น/เดือนที่เลือก) ลบแล้วเพิ่มใหม่</div>` : "";
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px;">
+      <span>วันที่ ${r.day} — เว้น <strong>${escapeHtml(staff ? staff.name : "?")}</strong> (ให้คิวถัดไปแทน)${warn}</span>
       <button class="mini-btn" data-idx="${i}">ลบ</button>
     </div>`;
   }).join("");
   box.querySelectorAll(".mini-btn").forEach((btn) => {
-    btn.onclick = () => { scheduleSkipRules.splice(Number(btn.dataset.idx), 1); renderSkipRulesList(staffList); };
+    btn.onclick = async () => { scheduleSkipRules.splice(Number(btn.dataset.idx), 1); await refreshSkipUI(); };
   });
 }
 document.getElementById("addSkipRuleBtn").onclick = async () => {
   const staffId = document.getElementById("skipStaffSelect").value;
   const day = Number(document.getElementById("skipDayInput").value);
-  if (!staffId || !day) { alert("กรุณาเลือกพนักงานและระบุวันที่"); return; }
+  if (!day) { alert("กรุณาใส่วันที่ก่อน"); return; }
+  if (!staffId) { alert("กรุณาเลือกคนที่ต้องการเว้น (แสดงเฉพาะคนที่ถึงคิวอยู่เวรในวันนั้น)"); return; }
+  if (scheduleSkipRules.some((r) => r.staffId === staffId && r.day === day)) { alert("มีเงื่อนไขนี้อยู่แล้ว"); return; }
   scheduleSkipRules.push({ staffId, day });
-  const staffList = await getStaffByGroup(activeScheduleGroupId);
-  renderSkipRulesList(staffList);
+  document.getElementById("skipDayInput").value = "";
+  await refreshSkipUI();
 };
-document.getElementById("scheduleMonthInput").onchange = () => { renderScheduleGrid(); renderOriginalStatus(); };
+document.getElementById("skipDayInput").oninput = () => refreshSkipUI();
+document.getElementById("startStaffSelect").onchange = () => refreshSkipUI();
+document.getElementById("scheduleMonthInput").onchange = () => { renderScheduleGrid(); renderOriginalStatus(); refreshSkipUI(); };
 document.getElementById("printScheduleBtn").onclick = () => buildAndPrintDutyForm(document.getElementById("printVersionSelect").value);
 document.getElementById("lockOriginalBtn").onclick = async () => {
   const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
@@ -1413,6 +1480,11 @@ document.getElementById("generateScheduleBtn").onclick = async () => {
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
   const startStaffId = document.getElementById("startStaffSelect").value;
   const startIndex = startStaffId ? staffList.findIndex((s) => s.id === startStaffId) : undefined;
+  {
+    const ctx = await skipContext();
+    const bad = ctx ? scheduleSkipRules.filter((_, i) => !skipRuleHasEffect(ctx, scheduleSkipRules, i)) : [];
+    if (bad.length && !confirm(`⚠️ มีเงื่อนไขเว้นคน ${bad.length} รายการที่ไม่มีผล (คนนั้นไม่ได้ถึงคิวอยู่เวรในวันที่ระบุ) ดูรายละเอียดที่ "ตัวเลือกการสุ่ม"\n\nต้องการสุ่มต่อโดยไม่สนใจเงื่อนไขเหล่านั้นหรือไม่?`)) return;
+  }
   if (!confirm("การสุ่มจะเขียนทับตารางเดือนนี้ของกลุ่มที่เลือก ยืนยันหรือไม่?")) return;
   if (await loadOriginalSchedule(activeScheduleGroupId, yyyyMm)) {
     if (!confirm("⚠️ เดือนนี้บันทึกฉบับเสนอลงนามไปแล้ว และอาจมีการแลกเวรที่อนุมัติแล้ว การสุ่มใหม่จะล้างผลการแลกเวรในตารางปัจจุบันทั้งหมด (ฉบับเสนอลงนามยังอยู่เหมือนเดิม)\n\nยังต้องการสุ่มใหม่อยู่หรือไม่?")) return;
