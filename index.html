@@ -74,6 +74,14 @@ a{color:inherit;}
 .field label{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:5px;}
 .field input,.field select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:var(--radius);font-family:inherit;font-size:14px;background:#fff;color:var(--ink);}
 .field input:focus,.field select:focus{outline:2px solid var(--teal-500);outline-offset:1px;}
+/* loading + tap feedback */
+.loading-hint{display:flex;align-items:center;justify-content:center;gap:10px;padding:36px 12px;color:var(--ink-soft,#6b6b6b);font-size:15px;}
+.spinner{width:18px;height:18px;border:3px solid var(--line,#ddd);border-top-color:var(--teal-700,#0f6a63);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#calendarBox{transition:opacity .15s;}
+html{-webkit-tap-highlight-color:transparent;}
+.btn:active,.icon-btn:active,.tab-btn:active,.nav-item:active{opacity:.7;}
+.btn,.icon-btn,.tab-btn,.nav-item,.cal-clickable{touch-action:manipulation;}
 .btn{display:inline-block;border:none;border-radius:var(--radius);padding:10px 16px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;text-align:center;transition:transform .12s ease,box-shadow .12s ease,background .15s ease;}
 .btn:hover{box-shadow:0 2px 8px rgba(11,61,57,.18);}
 .btn:active{transform:translateY(1px);}
@@ -791,9 +799,28 @@ import {
   signInWithEmailAndPassword, createUserWithEmailAndPassword, deleteUser
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, getDocs, query, where, orderBy, writeBatch, runTransaction
+  getFirestore, doc, getDoc, setDoc as _setDoc, updateDoc as _updateDoc, deleteDoc as _deleteDoc, addDoc as _addDoc,
+  collection, getDocs, query, where, orderBy, writeBatch as _writeBatch, runTransaction as _runTransaction
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+// ---- แคชการอ่านระยะสั้น (ล้างทุกครั้งที่มีการเขียนข้อมูล) ----
+const CACHE_TTL = 20000;
+const _cache = new Map();
+function clearCache() { _cache.clear(); }
+function memo(key, fn) {
+  const hit = _cache.get(key);
+  if (hit && Date.now() - hit.t < CACHE_TTL) return hit.p.then((v) => structuredClone(v));
+  const p = fn();
+  _cache.set(key, { t: Date.now(), p });
+  p.catch(() => { if (_cache.get(key)?.p === p) _cache.delete(key); });
+  return p.then((v) => structuredClone(v));
+}
+const setDoc = (...a) => { clearCache(); return _setDoc(...a); };
+const updateDoc = (...a) => { clearCache(); return _updateDoc(...a); };
+const deleteDoc = (...a) => { clearCache(); return _deleteDoc(...a); };
+const addDoc = (...a) => { clearCache(); return _addDoc(...a); };
+const runTransaction = (...a) => { clearCache(); return _runTransaction(...a).finally(clearCache); };
+const writeBatch = (...a) => { const b = _writeBatch(...a); const c = b.commit.bind(b); b.commit = () => { clearCache(); return c().finally(clearCache); }; return b; };
 
 const firebaseConfig = {
   apiKey: "AIzaSyDnhKGBnLpTIaOAvlBhyBcdgA1kH_-Cd1w",
@@ -883,11 +910,13 @@ async function ensureDefaultGroups() {
   DEFAULT_GROUPS.forEach((g) => batch.set(doc(collection(db, "groups")), g));
   await batch.commit();
 }
-async function getGroups() {
+async function getGroups() { return memo("groups", _getGroups); }
+async function _getGroups() {
   const snap = await getDocs(query(collection(db, "groups"), orderBy("order", "asc")));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
-async function getStaffByGroup(groupId) {
+async function getStaffByGroup(groupId) { return memo("staffg:" + groupId, () => _getStaffByGroup(groupId)); }
+async function _getStaffByGroup(groupId) {
   const snap = await getDocs(query(collection(db, "staff"), where("groupId", "==", groupId)));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
@@ -896,7 +925,8 @@ async function addStaff(groupId, name, empId, nickname) {
   const maxOrder = existing.reduce((m, s) => Math.max(m, s.order ?? 0), 0);
   await addDoc(collection(db, "staff"), { name, empId, groupId, order: maxOrder + 1, linkedUid: null, nickname: nickname || "" });
 }
-async function getAllStaff() {
+async function getAllStaff() { return memo("staff", _getAllStaff); }
+async function _getAllStaff() {
   const snap = await getDocs(collection(db, "staff"));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
@@ -968,7 +998,8 @@ async function loadThaiHolidaysForYear(gregorianYear, buddhistYear) {
   await Promise.all(holidays.map((h) => setDoc(doc(db, "holidays", h.date), { name: h.name, custom: false }, { merge: true })));
   return { count: holidays.length, hasMovableData: !!MOVABLE_HOLIDAYS_BY_BUDDHIST_YEAR[buddhistYear] };
 }
-async function getAllHolidays() {
+async function getAllHolidays() { return memo("holidays", _getAllHolidays); }
+async function _getAllHolidays() {
   const snap = await getDocs(collection(db, "holidays"));
   return snap.docs.map((d) => ({ date: d.id, ...d.data() })).sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -1014,7 +1045,8 @@ function generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex, ski
 async function saveSchedule(groupId, yyyyMm, assignments) {
   await setDoc(doc(db, "schedules", scheduleId(groupId, yyyyMm)), { assignments, updatedAt: Date.now() });
 }
-async function loadSchedule(groupId, yyyyMm) {
+async function loadSchedule(groupId, yyyyMm) { return memo("sch:" + groupId + yyyyMm, () => _loadSchedule(groupId, yyyyMm)); }
+async function _loadSchedule(groupId, yyyyMm) {
   const snap = await getDoc(doc(db, "schedules", scheduleId(groupId, yyyyMm)));
   return snap.exists() ? snap.data().assignments : null;
 }
@@ -1028,7 +1060,8 @@ async function updateCell(groupId, yyyyMm, day, slotIndex, staffId) {
 
 // ---------- ฉบับเสนอลงนาม (สำเนาตารางก่อนแลกเวร) ----------
 // เก็บแยกไว้ใน scheduleOriginals/{groupId}_{yyyy-mm} ไม่ถูกแก้ตามการแลกเวร
-async function loadOriginalSchedule(groupId, yyyyMm) {
+async function loadOriginalSchedule(groupId, yyyyMm) { return memo("orig:" + groupId + yyyyMm, () => _loadOriginalSchedule(groupId, yyyyMm)); }
+async function _loadOriginalSchedule(groupId, yyyyMm) {
   const snap = await getDoc(doc(db, "scheduleOriginals", scheduleId(groupId, yyyyMm)));
   return snap.exists() ? snap.data() : null;
 }
@@ -1179,6 +1212,7 @@ document.querySelectorAll("#swapTabs .tab-btn").forEach((b) => b.addEventListene
 // ==========================================================================
 onAuthStateChanged(auth, (user) => { if (!registrationInProgress) handleAuthUser(user); });
 async function handleAuthUser(user) {
+  clearCache();
   if (!user) {
     document.getElementById("authScreen").classList.remove("hidden");
     document.getElementById("appScreen").classList.add("hidden");
@@ -1737,6 +1771,7 @@ function isDutyShiftActive(shiftIdx, dow, isHoliday) {
 async function renderCalendar() {
   const box = document.getElementById("calendarBox");
   const yyyyMm = document.getElementById("calendarMonthInput").value || currentYyyyMm();
+  if (!box.firstElementChild) box.innerHTML = `<div class="loading-hint"><span class="spinner"></span>กำลังโหลด…</div>`; else box.style.opacity = ".55";
   if (!allGroups.length) allGroups = await getGroups();
   const dutyGroups = allGroups.filter(isDutyRosterGroup).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   if (!dutyGroups.length) { box.innerHTML = `<div class="empty-hint">ยังไม่มีกลุ่ม "พนักงานอยู่เวร" ในระบบ</div>`; return; }
@@ -1744,14 +1779,13 @@ async function renderCalendar() {
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
 
   const nicknameMap = {};
-  (await getAllStaff()).forEach((s) => nicknameMap[s.id] = (s.nickname && s.nickname.trim()) || s.name);
-  const groupAssignments = [];
-  for (const g of dutyGroups) {
-    const assignments = (await loadSchedule(g.id, yyyyMm)) || {};
-    groupAssignments.push({ groupId: g.id, groupName: g.name, assignments });
-  }
-  // ช่องที่ได้มาจากการแลกเวร (อนุมัติแล้ว) จะแสดงชื่อพร้อมเครื่องหมาย ⇄
-  const swappedKeys = await getSwappedCellKeys(yyyyMm);
+  const [staffAll, groupAssignments, swappedKeys] = await Promise.all([
+    getAllStaff(),
+    Promise.all(dutyGroups.map(async (g) => ({ groupId: g.id, groupName: g.name, assignments: (await loadSchedule(g.id, yyyyMm)) || {} }))),
+    // ช่องที่ได้มาจากการแลกเวร (อนุมัติแล้ว) จะแสดงชื่อพร้อมเครื่องหมาย ⇄
+    getSwappedCellKeys(yyyyMm),
+  ]);
+  staffAll.forEach((s) => nicknameMap[s.id] = (s.nickname && s.nickname.trim()) || s.name);
 
   const [y, m] = yyyyMm.split("-").map(Number);
   const numDays = daysInMonth(yyyyMm);
@@ -1815,6 +1849,7 @@ async function renderCalendar() {
     }
   }
 
+  box.style.opacity = "";
   box.innerHTML = `<div class="cal-grid"><div class="cal-head-row">${head}</div><div class="cal-body">${body}</div></div>
     <p class="legend">ชื่อที่มีเครื่องหมาย ⇄ = ได้เวรนั้นมาจากการแลกเวรที่อนุมัติแล้ว (ดูรายละเอียดที่เมนู "ประวัติการแลกเวร")${currentStaffProfile ? " · ชื่อของคุณจะไฮไลท์สีส้ม" : ""}</p>`;
   box.querySelectorAll(".cal-name").forEach((el) => { el.onclick = () => onCalNameClick(el); });
@@ -1994,8 +2029,7 @@ async function renderMySchedule() {
   const box = document.getElementById("myScheduleBox");
   if (!currentStaffProfile) { box.innerHTML = `<div class="empty-hint">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อแอดมิน</div>`; return; }
   const yyyyMm = document.getElementById("myScheduleMonthInput").value || currentYyyyMm();
-  const myShifts = await getShiftsOfStaff(currentStaffProfile.id, [yyyyMm]);
-  const swappedKeys = await getSwappedCellKeys(yyyyMm);
+  const [myShifts, swappedKeys] = await Promise.all([getShiftsOfStaff(currentStaffProfile.id, [yyyyMm]), getSwappedCellKeys(yyyyMm)]);
   const [y, m] = yyyyMm.split("-").map(Number);
   const byDay = {};
   myShifts.forEach((sh) => { (byDay[sh.day] = byDay[sh.day] || []).push(sh); });
@@ -2207,11 +2241,14 @@ async function getSwappedCellKeys(yyyyMm) {
   const keys = new Set();
   try {
     if (!allGroups.length) allGroups = await getGroups();
-    for (const g of allGroups) {
-      const orig = await loadOriginalSchedule(g.id, yyyyMm);
+    const pairs = await Promise.all(allGroups.map(async (g) => {
+      const [orig, cur] = await Promise.all([loadOriginalSchedule(g.id, yyyyMm), loadSchedule(g.id, yyyyMm)]);
+      return { orig, cur };
+    }));
+    for (const { orig, cur } of pairs) {
       if (!orig) continue;
       const origA = orig.assignments || {};
-      const current = (await loadSchedule(g.id, yyyyMm)) || {};
+      const current = cur || {};
       const days = new Set([...Object.keys(origA), ...Object.keys(current)]);
       days.forEach((day) => {
         const o = origA[day] || [];
