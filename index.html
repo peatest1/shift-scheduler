@@ -649,7 +649,7 @@ body.printing-form #printFormArea{display:block;}
             <option value="current">พิมพ์ฉบับปัจจุบัน</option>
             <option value="original">พิมพ์ฉบับเสนอลงนาม</option>
           </select>
-          <button class="btn btn-ghost tb-btn" id="printScheduleBtn">🖨️ พิมพ์ (3 ชุด)</button>
+          <button class="btn btn-ghost tb-btn" id="printScheduleBtn">🖨️ พิมพ์</button>
         </div>
       </div>
 
@@ -688,6 +688,10 @@ body.printing-form #printFormArea{display:block;}
               <div class="field grow"><label>ชื่อผู้ลงนาม</label><input type="text" id="dfSignerName"></div>
               <div class="field grow"><label>ตำแหน่งผู้ลงนาม</label><input type="text" id="dfSignerTitle"></div>
             </div>
+            <div class="row-flex">
+              <div class="field grow"><label>ชื่อผู้บริหารผู้อนุมัติ (ตรงกลางท้ายฟอร์ม)</label><input type="text" id="dfManagerName"></div>
+              <div class="field grow"><label>ตำแหน่งผู้บริหาร</label><input type="text" id="dfManagerTitle"></div>
+            </div>
             <button class="btn btn-primary btn-small" id="saveDispatchSettingsBtn" style="width:auto;">บันทึกการตั้งค่าแบบฟอร์ม</button>
           </div>
         </details>
@@ -715,6 +719,10 @@ body.printing-form #printFormArea{display:block;}
             <div class="row-flex">
               <div class="field grow"><label>รายชื่อสำเนาถึง (ขวา)</label><input type="text" id="pfFooterRightDistribution"></div>
               <div class="field grow"><label>คำอนุมัติ (ขวา)</label><input type="text" id="pfFooterRightApproval"></div>
+            </div>
+            <div class="row-flex">
+              <div class="field grow"><label>ชื่อผู้บริหารผู้อนุมัติ (มุมล่างขวา)</label><input type="text" id="pfManagerName"></div>
+              <div class="field grow"><label>ตำแหน่งผู้บริหาร</label><input type="text" id="pfManagerTitle"></div>
             </div>
             <button class="btn btn-primary btn-small" id="savePrintSettingsBtn" style="width:auto;">บันทึกการตั้งค่าแบบฟอร์ม</button>
           </div>
@@ -882,6 +890,8 @@ const DEFAULT_PRINT_SETTINGS = {
   footerLeftSignerTitle: "พชง.6 ผปบ.บต.",
   footerRightDistribution: "ชจก.(ท,บ),นบท.8,ผผ.คพ.,บส.,มต.,ปบ.,กส.,สน.,บป.",
   footerRightApproval: "อนุมัติตามเสนอ",
+  managerName: "นายโรม หนูยวญ",
+  managerTitle: "ชจก.(ท.)ปฏิบัติงานแทน ผจก.กฟส.เบตง",
 };
 async function getPrintFormSettings() {
   try {
@@ -898,12 +908,12 @@ const DEFAULT_DISPATCH_SETTINGS = { // แบบฟอร์มพนักง�
   signerName: "( นายนันทวัชร์ ช้วนตั้น )", signerTitle: "รักษาการแทน หผ.ปบ.บต.",
 };
 async function getDispatchSettings() {
-  try {
-    const snap = await getDoc(doc(db, "settings", "printFormDispatch"));
-    return snap.exists() ? { ...DEFAULT_DISPATCH_SETTINGS, ...snap.data() } : { ...DEFAULT_DISPATCH_SETTINGS };
-  } catch (e) { return { ...DEFAULT_DISPATCH_SETTINGS }; }
+  const common = await getPrintFormSettings(); // ผู้บริหารผู้อนุมัติใช้ร่วมกับฟอร์มอื่น
+  let own = {};
+  try { const snap = await getDoc(doc(db, "settings", "printFormDispatch")); if (snap.exists()) own = snap.data(); } catch (e) {}
+  return { ...DEFAULT_DISPATCH_SETTINGS, ...own, managerName: common.managerName, managerTitle: common.managerTitle };
 }
-const DF_FIELDS = { from: "dfFrom", to: "dfTo", subject: "dfSubject", addressee: "dfAddressee", body: "dfBody", note1: "dfNote1", note2: "dfNote2", approval: "dfApproval", signerName: "dfSignerName", signerTitle: "dfSignerTitle" };
+const DF_FIELDS = { from: "dfFrom", to: "dfTo", subject: "dfSubject", addressee: "dfAddressee", body: "dfBody", note1: "dfNote1", note2: "dfNote2", approval: "dfApproval", signerName: "dfSignerName", signerTitle: "dfSignerTitle", managerName: "dfManagerName", managerTitle: "dfManagerTitle" };
 async function populateDispatchSettingsForm() {
   const s = await getDispatchSettings();
   Object.entries(DF_FIELDS).forEach(([k, id]) => { document.getElementById(id).value = s[k]; });
@@ -911,7 +921,9 @@ async function populateDispatchSettingsForm() {
 document.getElementById("saveDispatchSettingsBtn").onclick = async () => {
   const values = {};
   Object.entries(DF_FIELDS).forEach(([k, id]) => { values[k] = document.getElementById(id).value.trim(); });
-  await setDoc(doc(db, "settings", "printFormDispatch"), values, { merge: true });
+  const { managerName, managerTitle, ...own } = values;
+  await setDoc(doc(db, "settings", "printFormDispatch"), own, { merge: true });
+  await savePrintFormSettings({ managerName, managerTitle });
   alert("บันทึกการตั้งค่าแบบฟอร์มพนักงานสั่งการเรียบร้อย");
 };
 async function savePrintFormSettings(values) { await setDoc(doc(db, "settings", "printForm"), values, { merge: true }); }
@@ -1360,6 +1372,8 @@ async function populatePrintSettingsForm() {
   document.getElementById("pfFooterLeftSignerTitle").value = s.footerLeftSignerTitle;
   document.getElementById("pfFooterRightDistribution").value = s.footerRightDistribution;
   document.getElementById("pfFooterRightApproval").value = s.footerRightApproval;
+  document.getElementById("pfManagerName").value = s.managerName;
+  document.getElementById("pfManagerTitle").value = s.managerTitle;
 }
 document.getElementById("savePrintSettingsBtn").onclick = async () => {
   const values = {
@@ -1374,6 +1388,8 @@ document.getElementById("savePrintSettingsBtn").onclick = async () => {
     footerLeftSignerTitle: document.getElementById("pfFooterLeftSignerTitle").value.trim(),
     footerRightDistribution: document.getElementById("pfFooterRightDistribution").value.trim(),
     footerRightApproval: document.getElementById("pfFooterRightApproval").value.trim(),
+    managerName: document.getElementById("pfManagerName").value.trim(),
+    managerTitle: document.getElementById("pfManagerTitle").value.trim(),
   };
   await savePrintFormSettings(values);
   alert("บันทึกการตั้งค่าแบบฟอร์มพิมพ์เรียบร้อย");
@@ -2180,37 +2196,32 @@ function buildDispatchPrintPage(group, staffList, assignments, y, m, buddhistYea
       <tr><td></td><td colspan="3">${F.body} ประจำเดือน ${monthName} พ.ศ.${buddhistYear} ดังนี้ ${versionNote || ""}</td></tr>
     </table>
     <table class="official-table dispatch-table">${nameRow}${subRow}${body}</table>
-    <div class="pf-footer" style="margin-top:14px;">
-      <div class="pf-col" style="text-align:left;"><div>หมายเหตุ &nbsp; ${escapeHtml(F.note1)}</div><div style="padding-left:52px;">${escapeHtml(F.note2)}</div></div>
-      <div class="pf-col"><div>${F.approval}</div><div class="pf-sign-space"></div><div class="pf-sign-space"></div><div>${F.signerName}</div><div>${F.signerTitle}</div></div>
+    <div class="pf-footer" style="margin-top:14px;align-items:flex-start;">
+      <div class="pf-col" style="text-align:left;flex:1;padding-top:30px;"><div>หมายเหตุ &nbsp; ${escapeHtml(F.note1)}</div><div style="padding-left:52px;">${escapeHtml(F.note2)}</div></div>
+      <div class="pf-col" style="flex:1.2;"><div>${F.approval}</div><div class="pf-sign-space"></div><div class="pf-sign-space"></div><div style="margin-top:8px;">${escapeHtml(F.managerName)}</div><div>${escapeHtml(F.managerTitle)}</div></div>
+      <div class="pf-col" style="flex:1;padding-top:22px;"><div class="pf-sign-space"></div><div>${F.signerName}</div><div>${F.signerTitle}</div></div>
     </div>
   </div>`;
 }
-async function buildAndPrintDispatchForm(version, group) {
-  const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
+// สร้างหน้าพิมพ์ของพนักงานสั่งการ (คืนค่า html หรือ null ถ้าไม่มีข้อมูล)
+async function dispatchPageHtml(useOriginal, group, yyyyMm, printDateThai) {
   const [y, m] = yyyyMm.split("-").map(Number);
   const staffList = await getStaffByGroup(group.id);
-  if (staffList.length < 3) { alert("พนักงานสั่งการต้องมีอย่างน้อย 3 คน"); return; }
-  if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
+  if (staffList.length < 3) return { html: null, reason: "few" };
   let assignments, versionNote = "";
-  if (version === "original") {
+  if (useOriginal) {
     const o = await loadOriginalSchedule(group.id, yyyyMm);
-    if (!o) { alert("เดือนนี้ยังไม่ได้บันทึกฉบับเสนอลงนามของพนักงานสั่งการ — กด \"📌 บันทึกเป็นฉบับเสนอลงนาม\" ก่อน"); return; }
+    if (!o) return { html: null, reason: "noOriginal" };
     assignments = o.assignments || {};
   } else {
     assignments = (await loadSchedule(group.id, yyyyMm)) || {};
     const o = await loadOriginalSchedule(group.id, yyyyMm);
     if (o && JSON.stringify(o.assignments || {}) !== JSON.stringify(assignments)) versionNote = "(ฉบับปรับปรุงหลังแลกเวร)";
   }
-  if (!Object.keys(assignments).length) { alert("เดือนนี้ยังไม่มีตารางเวร กด \"สุ่มหมุนเวร\" ก่อน"); return; }
-  const today = new Date();
-  const printDateThai = `${today.getDate()} ${THAI_MONTHS[today.getMonth()]} ${today.getFullYear() + 543}`;
-  document.getElementById("printFormArea").innerHTML = buildDispatchPrintPage(group, staffList, assignments, y, m, y + 543, THAI_MONTHS[m - 1], daysInMonth(yyyyMm), printDateThai, versionNote, await getDispatchSettings());
-  document.body.classList.add("printing-form");
-  setTimeout(() => window.print(), 50);
+  if (!Object.keys(assignments).length) return { html: null, reason: "empty" };
+  return { html: buildDispatchPrintPage(group, staffList, assignments, y, m, y + 543, THAI_MONTHS[m - 1], daysInMonth(yyyyMm), printDateThai, versionNote, await getDispatchSettings()) };
 }
 async function buildAndPrintDutyForm(version) {
-  { const ag = allGroups.find((g) => g.id === activeScheduleGroupId); if (isDispatchGroup(ag)) return buildAndPrintDispatchForm(version, ag); }
   const useOriginal = version === "original";
   const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
   const [y, m] = yyyyMm.split("-").map(Number);
@@ -2219,8 +2230,9 @@ async function buildAndPrintDutyForm(version) {
   const numDays = daysInMonth(yyyyMm);
 
   if (!allGroups.length) allGroups = await getGroups();
-  const dutyGroups = allGroups.filter(isDutyRosterGroup).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  if (!dutyGroups.length) { alert('ยังไม่มีกลุ่ม "พนักงานอยู่เวร" ในระบบ ไม่สามารถสร้างแบบฟอร์มได้'); return; }
+  // พิมพ์ทุกกลุ่มในครั้งเดียว: พนักงานอยู่เวร 3 ชุด → ผู้ตรวจเวร → พนักงานสั่งการ (ฟอร์มแนวตั้งของตัวเอง)
+  const dutyGroups = allGroups.slice().sort((a, b) => (isDispatchGroup(a) ? 1 : 0) - (isDispatchGroup(b) ? 1 : 0) || (a.order ?? 0) - (b.order ?? 0));
+  if (!dutyGroups.length) { alert('ยังไม่มีกลุ่มในระบบ ไม่สามารถสร้างแบบฟอร์มได้'); return; }
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
   const settings = await getPrintFormSettings();
   const today = new Date();
@@ -2231,6 +2243,12 @@ async function buildAndPrintDutyForm(version) {
   let missingOriginal = 0;
   const allStaffList = await getAllStaff();
   for (const group of dutyGroups) {
+    if (isDispatchGroup(group)) {
+      const r = await dispatchPageHtml(useOriginal, group, yyyyMm, printDateThai);
+      if (r.html) { pagesHtml += r.html; pageIndex++; }
+      else if (r.reason === "noOriginal") missingOriginal++;
+      continue;
+    }
     const ownStaff = await getStaffByGroup(group.id);
     if (!ownStaff.length) continue;
     let assignments;
@@ -2332,7 +2350,9 @@ function buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, mo
       <div class="pf-col">
         <div>${s.footerRightDistribution}</div>
         <div>${s.footerRightApproval}</div>
-        <div class="pf-sign-space"></div>
+        <div class="pf-sign-space"></div><div class="pf-sign-space"></div>
+        <div>${escapeHtml(s.managerName || "")}</div>
+        <div>${escapeHtml(s.managerTitle || "")}</div>
       </div>
     </div>` : ""}
   </div>`;
