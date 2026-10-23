@@ -246,6 +246,9 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .official-table tr.pf-weekend td{background:#EBEBEB;}
 .official-table tr.pf-holiday td{background:#FFE29A;}
 .official-table tr.pf-sun td:nth-child(1),.official-table tr.pf-sun td:nth-child(2){background:#D8281C;color:#fff;font-weight:700;}
+.dispatch-table{font-size:9px;}
+.dispatch-table td{height:15px;}
+.dispatch-table th:nth-child(4n+2),.dispatch-table td:nth-child(4n+2){border-left:2px solid #000;}
 .pf-total-row td{font-weight:700;background:#F3F1E8;}
 .pf-footer{display:flex;justify-content:space-between;margin-top:8px;font-size:10px;gap:20px;}
 .pf-footer .pf-col{flex:1;text-align:center;}
@@ -266,6 +269,8 @@ body.printing-form #printFormArea{display:block;}
   .sched-table .sticky-col{position:static;}
   table{font-size:11px;}
   @page{size:A4 landscape;margin:8mm;}
+  @page dispatch{size:A4 portrait;margin:8mm;}
+  .print-page.dispatch{page:dispatch;}
   .print-page{page-break-after:always;width:100%;min-height:0;padding:0;margin:0;}
   .print-page:last-child{page-break-after:auto;}
 }
@@ -877,6 +882,34 @@ const DEFAULT_GROUPS = [
 function isDutyRosterGroup(group) {
   return group.isWeekdayVariable ?? (group.name || "").includes("พนักงานอยู่เวร");
 }
+// ---- พนักงานสั่งการ: หมุนเวร 3 คน รอบละ 6 วัน (กะ1, พักกะ, กะ2, กะ2, กะ3, กะ1) เหลื่อมกันคนละ 2 วัน ----
+// ตามแบบฟอร์มที่ใช้จริง: ทุกวันมี กะ1 และ กะ2 ครบ ส่วน กะ3 มีวันเว้นวัน (วันถัดไปแสดง 1.5)
+const DISPATCH_CYCLE = [0, -1, 1, 1, 2, 0]; // ค่า = ช่วง/กะ (0=กะ1,1=กะ2,2=กะ3) , -1 = พักกะ
+const DISPATCH_EPOCH = new Date(2026, 9, 1); // รอบเริ่มต้นอ้างอิง: 1 ต.ค. 2569 คนที่ 1 ได้ กะ1 (ทำให้เดือนต่อเดือนต่อเนื่องกัน)
+function isDispatchGroup(group) {
+  return !!group && (group.rosterType === "dispatch" || (group.name || "").includes("พนักงานสั่งการ"));
+}
+function daysSinceEpoch(y, m, d) {
+  return Math.round((new Date(y, m - 1, d) - DISPATCH_EPOCH) / 86400000);
+}
+function generateDispatchRotation(staffList, yyyyMm, startIndex) {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const days = daysInMonth(yyyyMm);
+  const people = staffList.slice(0, 3);
+  const assignments = {};
+  // ถ้าเลือก "ให้ใครได้เวรแรก" = คนนั้นได้ กะ1 ในวันที่ 1 ของเดือน (เหลื่อมคนถัดไปตามลำดับ)
+  const shift = (startIndex !== null && startIndex !== undefined && startIndex < 3) ? (2 * startIndex) : daysSinceEpoch(y, m, 1);
+  for (let day = 1; day <= days; day++) {
+    const slots = [null, null, null];
+    people.forEach((st, k) => {
+      const pos = (((day - 1 + shift - 2 * k) % 6) + 6) % 6;
+      const sh = DISPATCH_CYCLE[pos];
+      if (sh >= 0) slots[sh] = st.id;
+    });
+    assignments[String(day)] = slots;
+  }
+  return assignments;
+}
 function activeShiftIndexesForDay(group, dateObj, isHoliday) {
   if (!isDutyRosterGroup(group)) return Array.from({ length: group.slotsPerDay }, (_, i) => i);
   const dow = dateObj.getDay();
@@ -1015,6 +1048,7 @@ function generateRotation(staffList, group, yyyyMm, holidaysMap, startIndex, ski
   const days = daysInMonth(yyyyMm);
   const assignments = {};
   if (n === 0) return assignments;
+  if (isDispatchGroup(group) && n >= 3) return generateDispatchRotation(staffList, yyyyMm, startIndex);
   const [y, m] = yyyyMm.split("-").map(Number);
   let pointer = (startIndex !== null && startIndex !== undefined) ? startIndex : (m % n);
   // เว้นคนเฉพาะวัน: day -> Set ของ staffId ที่ห้ามได้เวรในวันนั้นเลย (ตรวจทุกคิว ข้ามไปเรื่อยๆ จนเจอคนที่ไม่ถูกเว้น)
@@ -1458,7 +1492,7 @@ async function onScheduleTabSelect(groupId) {
   const g = allGroups.find((x) => x.id === groupId);
   const slotsField = document.getElementById("slotsPerDayInput").closest(".field");
   const saveBtn = document.getElementById("saveSlotsBtn");
-  if (g && isDutyRosterGroup(g)) {
+  if (g && (isDutyRosterGroup(g) || isDispatchGroup(g))) {
     slotsField.classList.add("hidden"); saveBtn.closest(".field").classList.add("hidden");
   } else {
     slotsField.classList.remove("hidden"); saveBtn.closest(".field").classList.remove("hidden");
@@ -1636,6 +1670,11 @@ document.getElementById("generateScheduleBtn").onclick = async () => {
   const staffList = await getStaffByGroup(activeScheduleGroupId);
   if (!staffList.length) { alert("กลุ่มนี้ยังไม่มีพนักงาน"); return; }
   const group = allGroups.find((g) => g.id === activeScheduleGroupId);
+  if (isDispatchGroup(group)) {
+    if (staffList.length < 3) { alert("พนักงานสั่งการต้องมีอย่างน้อย 3 คนจึงจะจัดตามรูปแบบรอบ 6 วันได้"); return; }
+    if (staffList.length > 3 && !confirm("กลุ่มนี้มีมากกว่า 3 คน ระบบจะจัดเฉพาะ 3 คนแรกตามลำดับ ยืนยันหรือไม่?")) return;
+    if (scheduleSkipRules.length) { alert("พนักงานสั่งการใช้รอบหมุนคงที่ 6 วัน ไม่รองรับการเว้นเวร ระบบจะไม่นำเงื่อนไขเว้นคนมาใช้"); scheduleSkipRules = []; await refreshSkipUI(); }
+  }
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
   const startStaffId = document.getElementById("startStaffSelect").value;
   const startIndex = startStaffId ? staffList.findIndex((s) => s.id === startStaffId) : undefined;
@@ -1684,7 +1723,8 @@ async function renderScheduleGrid() {
   staffList.forEach((s, i) => {
     const band = i % 2 === 0 ? "emp-a" : "emp-b";
     headRow1 += `<th colspan="3" class="${band} emp-border-end${s.isGuest ? " guest" : ""}">${escapeHtml(s.name)}<br><span style="font-weight:400;font-size:11px;">${escapeHtml(s.empId)}${s.isGuest ? " · ชุดอื่น" : ""}</span></th>`;
-    headRow2 += `<th class="${band}">ช่วง1</th><th class="${band}">ช่วง2</th><th class="${band} emp-border-end">ช่วง3</th>`;
+    const lb = isDispatchGroup(group) ? "กะ" : "ช่วง";
+    headRow2 += `<th class="${band}">${lb}1</th><th class="${band}">${lb}2</th><th class="${band} emp-border-end">${lb}3</th>`;
   });
   headRow1 += "</tr>"; headRow2 += "</tr>";
 
@@ -2053,7 +2093,79 @@ async function renderMySchedule() {
 // ==========================================================================
 // 14) แบบฟอร์มพิมพ์ราชการ (A4 แนวนอน) — ดึงข้อมูล "พนักงานอยู่เวร" ทั้ง 3 ชุด ชุดละ 1 หน้า
 // ==========================================================================
+const DISPATCH_FORM = { // ข้อความแบบฟอร์มพนักงานสั่งการ (ตามแบบที่ใช้จริง) แก้ไขได้ที่นี่
+  from: "หผ.ปบ.บต.", to: "ผจก.กฟส.เบตง",
+  subject: "ขออนุมัติจัดกะอยู่เวรปฏิบัติงานของพนักงานช่างสั่งงานแก้กระแสไฟฟ้าขัดข้อง",
+  addressee: "ผจก.กฟส.เบตง ผ่าน ชจก.(ท)",
+  body: "เพื่อให้งานสั่งการแก้กระแสไฟฟ้าขัดข้องเป็นไปด้วยความเรียบร้อย จึงขออนุมัติจัดกะอยู่เวร ปฏิบัติงานของพนักงาน",
+  signerName: "( นายนันทวัชร์ ช้วนตั้น )", signerTitle: "รักษาการแทน หผ.ปบ.บต.",
+};
+function buildDispatchPrintPage(group, staffList, assignments, y, m, buddhistYear, monthName, numDays, printDateThai, versionNote) {
+  const people = staffList.slice(0, 3);
+  const F = DISPATCH_FORM;
+  const nameRow = `<tr><th style="width:6%;">ชื่อ</th>` + people.map((st) => `<th colspan="4">${escapeHtml(st.name)}</th>`).join("") + `</tr>`;
+  const subRow = `<tr><th>วันที่</th>` + people.map(() => `<th>พักกะ</th><th>กะ1</th><th>กะ2</th><th>กะ3</th>`).join("") + `</tr>`;
+  let body = "";
+  for (let d = 1; d <= numDays; d++) {
+    const dow = new Date(y, m - 1, d).getDay();
+    const iso = todayISO(y, m, d);
+    const cls = [holidaysMap[iso] ? "pf-holiday" : "", (dow === 0 || dow === 6) && !holidaysMap[iso] ? "pf-weekend" : ""].filter(Boolean).join(" ");
+    const today = assignments[String(d)] || [null, null, null];
+    const prev = assignments[String(d - 1)] || [null, null, null];
+    body += `<tr class="${cls}"><td>${d}</td>`;
+    people.forEach((st) => {
+      const mine = [0, 1, 2].map((i) => today[i] === st.id);
+      const off = !mine.some(Boolean);
+      const carry = prev[2] === st.id; // ทำกะ3 เมื่อวาน → วันนี้แสดง 1.5
+      body += `<td>${off ? "off" : ""}</td><td>${mine[0] ? "x" : ""}</td><td>${mine[1] ? "x" : ""}</td><td>${mine[2] ? "x" : carry ? "1.5" : ""}</td>`;
+    });
+    body += "</tr>";
+  }
+  return `
+  <div class="print-page dispatch">
+    <div class="pf-header">
+      <div class="pf-logo"><img src="data:image/png;base64,${PEA_LOGO_BASE64}" alt="PEA" style="width:100%;height:100%;object-fit:contain;"></div>
+      <div><p class="pf-org-th">การไฟฟ้าส่วนภูมิภาค</p><p class="pf-org-en">PROVINCIAL ELECTRICITY AUTHORITY</p></div>
+    </div>
+    <table class="pf-meta-table">
+      <tr><td class="pf-meta-label">จาก</td><td>${F.from}</td><td class="pf-meta-label" style="width:60px;">ถึง</td><td>${F.to}</td></tr>
+      <tr><td class="pf-meta-label">เลขที่</td><td></td><td class="pf-meta-label">วันที่</td><td>${printDateThai}</td></tr>
+      <tr><td class="pf-meta-label">เรื่อง</td><td colspan="3">${F.subject}</td></tr>
+      <tr><td class="pf-meta-label">เรียน</td><td colspan="3">${F.addressee}</td></tr>
+      <tr><td></td><td colspan="3">${F.body} ประจำเดือน ${monthName} พ.ศ.${buddhistYear} ดังนี้ ${versionNote || ""}</td></tr>
+    </table>
+    <table class="official-table dispatch-table">${nameRow}${subRow}${body}</table>
+    <div class="pf-footer" style="margin-top:14px;">
+      <div class="pf-col" style="text-align:left;"><div>หมายเหตุ &nbsp; x เวรกะ</div><div style="padding-left:52px;">off พักกะ</div></div>
+      <div class="pf-col"><div>อนุมัติ</div><div class="pf-sign-space"></div><div class="pf-sign-space"></div><div>${F.signerName}</div><div>${F.signerTitle}</div></div>
+    </div>
+  </div>`;
+}
+async function buildAndPrintDispatchForm(version, group) {
+  const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const staffList = await getStaffByGroup(group.id);
+  if (staffList.length < 3) { alert("พนักงานสั่งการต้องมีอย่างน้อย 3 คน"); return; }
+  if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
+  let assignments, versionNote = "";
+  if (version === "original") {
+    const o = await loadOriginalSchedule(group.id, yyyyMm);
+    if (!o) { alert("เดือนนี้ยังไม่ได้บันทึกฉบับเสนอลงนามของพนักงานสั่งการ — กด \"📌 บันทึกเป็นฉบับเสนอลงนาม\" ก่อน"); return; }
+    assignments = o.assignments || {};
+  } else {
+    assignments = (await loadSchedule(group.id, yyyyMm)) || {};
+    const o = await loadOriginalSchedule(group.id, yyyyMm);
+    if (o && JSON.stringify(o.assignments || {}) !== JSON.stringify(assignments)) versionNote = "(ฉบับปรับปรุงหลังแลกเวร)";
+  }
+  if (!Object.keys(assignments).length) { alert("เดือนนี้ยังไม่มีตารางเวร กด \"สุ่มหมุนเวร\" ก่อน"); return; }
+  const today = new Date();
+  const printDateThai = `${today.getDate()} ${THAI_MONTHS[today.getMonth()]} ${today.getFullYear() + 543}`;
+  document.getElementById("printFormArea").innerHTML = buildDispatchPrintPage(group, staffList, assignments, y, m, y + 543, THAI_MONTHS[m - 1], daysInMonth(yyyyMm), printDateThai, versionNote);
+  document.body.classList.add("printing-form");
+  setTimeout(() => window.print(), 50);
+}
 async function buildAndPrintDutyForm(version) {
+  { const ag = allGroups.find((g) => g.id === activeScheduleGroupId); if (isDispatchGroup(ag)) return buildAndPrintDispatchForm(version, ag); }
   const useOriginal = version === "original";
   const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
   const [y, m] = yyyyMm.split("-").map(Number);
