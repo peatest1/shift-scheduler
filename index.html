@@ -261,7 +261,7 @@ body.printing-form #printFormArea{display:block;}
 
 /* ---------- print ---------- */
 @media print{
-  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;transition:none !important;animation:none !important;box-shadow:none !important;}
   .sidebar,.no-print,.sidebar-backdrop,.mobile-topbar{display:none !important;}
   body{background:#fff;}
   .main{padding:0;width:100%;}
@@ -565,6 +565,9 @@ body.printing-form #printFormArea{display:block;}
           <div class="field cal-month-field"><label>เดือน</label><input type="month" id="calendarMonthInput"></div>
           <button class="icon-btn" id="printCalendarBtn" title="พิมพ์ / บันทึก PDF" aria-label="พิมพ์ / บันทึก PDF">🖨️</button>
         </div>
+        <label class="field admin-only" id="calNoHighlightField" style="display:flex;align-items:center;gap:8px;flex-direction:row;margin-top:10px;">
+          <input type="checkbox" id="calNoHighlightMe" style="width:auto;"> ไม่ไฮไลท์ชื่อฉัน (สำหรับพิมพ์ติดบอร์ด)
+        </label>
         <div class="cal-actions staff-only" id="calSwapToolbar">
           <button class="cal-action-btn" id="calSwapModeBtn"><span class="cal-action-icon">🔄</span>แลกเวรจากปฏิทิน</button>
           <button class="cal-action-btn cover" id="calCoverModeBtn"><span class="cal-action-icon">📤</span>ฝากเวรจากปฏิทิน</button>
@@ -1579,12 +1582,17 @@ document.getElementById("addStaffBtn").onclick = async () => {
   if (!name || !activeStaffGroupId) return;
   if (insp) { if (!position) { alert("กรุณากรอกตำแหน่ง"); return; } }
   else if (!empId) { return; }
-  await addStaff(activeStaffGroupId, name, empId, nickname, position);
-  document.getElementById("newStaffName").value = "";
-  document.getElementById("newStaffNickname").value = "";
-  document.getElementById("newStaffEmpId").value = "";
-  document.getElementById("newStaffPosition").value = "";
-  renderStaffList();
+  const btn = document.getElementById("addStaffBtn");
+  const oldLabel = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = "⏳ กำลังเพิ่ม…";
+  try {
+    await addStaff(activeStaffGroupId, name, empId, nickname, position);
+    document.getElementById("newStaffName").value = "";
+    document.getElementById("newStaffNickname").value = "";
+    document.getElementById("newStaffEmpId").value = "";
+    document.getElementById("newStaffPosition").value = "";
+    await renderStaffList();
+  } finally { btn.disabled = false; btn.innerHTML = oldLabel; }
 };
 
 // ==========================================================================
@@ -1763,7 +1771,13 @@ document.getElementById("addSkipRuleBtn").onclick = async () => {
 document.getElementById("skipDayInput").oninput = () => refreshSkipUI();
 document.getElementById("startStaffSelect").onchange = () => refreshSkipUI();
 document.getElementById("scheduleMonthInput").onchange = () => { renderScheduleGrid(); renderOriginalStatus(); refreshSkipUI(); };
-document.getElementById("printScheduleBtn").onclick = () => buildAndPrintDutyForm(document.getElementById("printVersionSelect").value);
+document.getElementById("printScheduleBtn").onclick = async () => {
+  const btn = document.getElementById("printScheduleBtn");
+  const oldLabel = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = "⏳ กำลังเตรียมพิมพ์…";
+  try { await buildAndPrintDutyForm(document.getElementById("printVersionSelect").value); }
+  finally { btn.disabled = false; btn.innerHTML = oldLabel; }
+};
 document.getElementById("lockOriginalBtn").onclick = async () => {
   const yyyyMm = document.getElementById("scheduleMonthInput").value || currentYyyyMm();
   const exists = await monthHasOriginal(yyyyMm);
@@ -1968,6 +1982,14 @@ async function renderScheduleGrid() {
 document.getElementById("myScheduleMonthInput").onchange = renderMySchedule;
 document.getElementById("calendarMonthInput").onchange = renderCalendar;
 document.getElementById("printCalendarBtn").onclick = () => window.print();
+(function () {
+  const cb = document.getElementById("calNoHighlightMe");
+  try { cb.checked = localStorage.getItem("calNoHighlightMe") === "1"; } catch (e) {}
+  cb.addEventListener("change", () => {
+    try { localStorage.setItem("calNoHighlightMe", cb.checked ? "1" : "0"); } catch (e) {}
+    renderCalendar();
+  });
+})();
 
 function isDutyShiftActive(shiftIdx, dow, isHoliday) {
   if (dow === 0 || dow === 6 || isHoliday) return true;
@@ -2037,7 +2059,7 @@ async function renderCalendar() {
             }
             const isPicked = calPickedMine && calPickedMine.day === d && calPickedMine.shift === shiftIdx && calPickedMine.staffId === x.id;
             const cls = ["cal-name"];
-            if (isMe) cls.push("cal-me");
+            if (isMe && !document.getElementById("calNoHighlightMe").checked) cls.push("cal-me");
             if (swapped) cls.push("cal-swapped");
             if (clickable) cls.push("cal-clickable");
             if (isPicked) cls.push("cal-picked");
@@ -2388,43 +2410,46 @@ async function buildAndPrintDutyForm(version) {
   // พิมพ์ทุกกลุ่มในครั้งเดียว: พนักงานอยู่เวร 3 ชุด → ผู้ตรวจเวร → พนักงานสั่งการ (ฟอร์มแนวตั้งของตัวเอง)
   const dutyGroups = allGroups.slice().sort((a, b) => (isDispatchGroup(a) ? 1 : 0) - (isDispatchGroup(b) ? 1 : 0) || (a.order ?? 0) - (b.order ?? 0));
   if (!dutyGroups.length) { alert('ยังไม่มีกลุ่มในระบบ ไม่สามารถสร้างแบบฟอร์มได้'); return; }
-  if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
-  const settings = await getPrintFormSettings();
   const today = new Date();
   const printDateThai = `${today.getDate()} ${THAI_MONTHS[today.getMonth()]} ${today.getFullYear() + 543}`;
+
+  // ดึงข้อมูลของทุกกลุ่มพร้อมกัน (ไม่รอทีละกลุ่ม) เพื่อให้กดพิมพ์แล้วหน้าต่างพิมพ์เด้งขึ้นเร็ว
+  const [, settings, allStaffList] = await Promise.all([
+    Object.keys(holidaysMap).length ? Promise.resolve() : getAllHolidays().then((list) => list.forEach((h) => holidaysMap[h.date] = h.name)),
+    getPrintFormSettings(),
+    getAllStaff(),
+  ]);
+  const groupData = await Promise.all(dutyGroups.map(async (group) => {
+    if (isDispatchGroup(group)) return { kind: "special", r: await dispatchPageHtml(useOriginal, group, yyyyMm, printDateThai) };
+    if (isInspectorGroup(group)) return { kind: "special", r: await inspectorPageHtml(useOriginal, group, yyyyMm, printDateThai) };
+    const ownStaff = await getStaffByGroup(group.id);
+    if (!ownStaff.length) return { kind: "empty" };
+    let assignments, versionNote = "";
+    if (useOriginal) {
+      const o = await loadOriginalSchedule(group.id, yyyyMm);
+      if (!o) return { kind: "missingOriginal" };
+      assignments = o.assignments || {};
+    } else {
+      const [sched, o] = await Promise.all([loadSchedule(group.id, yyyyMm), loadOriginalSchedule(group.id, yyyyMm)]);
+      assignments = sched || {};
+      if (o && JSON.stringify(o.assignments || {}) !== JSON.stringify(assignments)) versionNote = "(ฉบับปรับปรุงหลังแลกเวร)";
+    }
+    return { kind: "duty", group, ownStaff, assignments, versionNote };
+  }));
 
   let pagesHtml = "";
   let pageIndex = 0;
   let missingOriginal = 0;
-  const allStaffList = await getAllStaff();
-  for (const group of dutyGroups) {
-    if (isDispatchGroup(group)) {
-      const r = await dispatchPageHtml(useOriginal, group, yyyyMm, printDateThai);
-      if (r.html) { pagesHtml += r.html; pageIndex++; }
-      else if (r.reason === "noOriginal") missingOriginal++;
+  for (const item of groupData) {
+    if (item.kind === "empty") continue;
+    if (item.kind === "missingOriginal") { missingOriginal++; continue; }
+    if (item.kind === "special") {
+      if (item.r.html) { pagesHtml += item.r.html; pageIndex++; }
+      else if (item.r.reason === "noOriginal") missingOriginal++;
       continue;
     }
-    if (isInspectorGroup(group)) {
-      const r = await inspectorPageHtml(useOriginal, group, yyyyMm, printDateThai);
-      if (r.html) { pagesHtml += r.html; pageIndex++; }
-      else if (r.reason === "noOriginal") missingOriginal++;
-      continue;
-    }
-    const ownStaff = await getStaffByGroup(group.id);
-    if (!ownStaff.length) continue;
-    let assignments;
-    let versionNote = "";
-    if (useOriginal) {
-      const o = await loadOriginalSchedule(group.id, yyyyMm);
-      if (!o) { missingOriginal++; continue; }
-      assignments = o.assignments || {};
-    } else {
-      assignments = (await loadSchedule(group.id, yyyyMm)) || {};
-      const o = await loadOriginalSchedule(group.id, yyyyMm);
-      if (o && JSON.stringify(o.assignments || {}) !== JSON.stringify(assignments)) versionNote = "(ฉบับปรับปรุงหลังแลกเวร)";
-    }
-    const staffList = ownStaff.concat(findGuestStaff(ownStaff, allStaffList, assignments));
-    pagesHtml += buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, monthName, numDays, settings, printDateThai, pageIndex === 0, versionNote);
+    const staffList = item.ownStaff.concat(findGuestStaff(item.ownStaff, allStaffList, item.assignments));
+    pagesHtml += buildOnePrintPage(item.group, staffList, item.assignments, y, m, buddhistYear, monthName, numDays, settings, printDateThai, pageIndex === 0, item.versionNote);
     pageIndex++;
   }
   if (useOriginal && !pagesHtml) { alert("เดือนนี้ยังไม่ได้บันทึกฉบับเสนอลงนาม — กด \"📌 บันทึกเป็นฉบับเสนอลงนาม\" ก่อน"); return; }
