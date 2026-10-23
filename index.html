@@ -248,7 +248,7 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 .official-table tr.pf-sun td:nth-child(1),.official-table tr.pf-sun td:nth-child(2){background:#D8281C;color:#fff;font-weight:700;}
 .dispatch-table{font-size:9px;}
 .dispatch-table td{height:15px;}
-.dispatch-table th:nth-child(4n+2),.dispatch-table td:nth-child(4n+2){border-left:2px solid #000;}
+.dispatch-table .person-start{border-left:2px solid #000;}
 .pf-total-row td{font-weight:700;background:#F3F1E8;}
 .pf-footer{display:flex;justify-content:space-between;margin-top:8px;font-size:10px;gap:20px;}
 .pf-footer .pf-col{flex:1;text-align:center;}
@@ -2168,22 +2168,24 @@ async function renderMySchedule() {
 // ==========================================================================
 function buildDispatchPrintPage(group, staffList, assignments, y, m, buddhistYear, monthName, numDays, printDateThai, versionNote, F) {
   const people = staffList.slice(0, 3);
-  const nameRow = `<tr><th style="width:6%;">ชื่อ</th>` + people.map((st) => `<th colspan="4">${escapeHtml(st.name)}</th>`).join("") + `</tr>`;
-  const subRow = `<tr><th>วันที่</th>` + people.map(() => `<th>พักกะ</th><th>กะ1</th><th>กะ2</th><th>กะ3</th>`).join("") + `</tr>`;
+  const nameRow = `<tr><th rowspan="2" style="width:5%;">วันที่</th><th rowspan="2" style="width:4%;">วัน</th>` + people.map((st) => `<th colspan="4">${escapeHtml(st.name)}</th>`).join("") + `</tr>`;
+  const subRow = `<tr>` + people.map(() => `<th class="person-start">พักกะ</th><th>กะ1</th><th>กะ2</th><th>กะ3</th>`).join("") + `</tr>`;
   let body = "";
   for (let d = 1; d <= numDays; d++) {
     const dow = new Date(y, m - 1, d).getDay();
     const iso = todayISO(y, m, d);
-    const cls = ""; // ฟอร์มจริงไม่ระบายสีทั้งแถว ระบายเฉพาะช่องวันที่ของวันอาทิตย์/วันหยุด
-    const dayShade = (dow === 0 || holidaysMap[iso]) ? ' style="background:#D0D0D0;"' : "";
+    const isHoliday = !!holidaysMap[iso];
+    const isSun = dow === 0, isSat = dow === 6;
+    // สีแถวให้เหมือนฟอร์มของพนักงานอยู่เวรทั้ง 3 ชุด: เทาวันเสาร์-อาทิตย์ ส้มวันหยุด แดงวันอาทิตย์ที่ช่องวันที่/วัน
+    const rowClasses = [(isHoliday ? "pf-holiday" : ""), ((isSun || isSat) && !isHoliday ? "pf-weekend" : ""), (isSun ? "pf-sun" : "")].filter(Boolean).join(" ");
     const today = assignments[String(d)] || [null, null, null];
     const prev = assignments[String(d - 1)] || [null, null, null];
-    body += `<tr class="${cls}"><td${dayShade}>${d}</td>`;
+    body += `<tr class="${rowClasses}"><td>${d}</td><td>${THAI_DOW[dow]}</td>`;
     people.forEach((st) => {
       const mine = [0, 1, 2].map((i) => today[i] === st.id);
       const off = !mine.some(Boolean);
       const carry = prev[2] === st.id; // ทำกะ3 เมื่อวาน → วันนี้แสดง 1.5
-      body += `<td>${off ? "off" : ""}</td><td>${mine[0] ? "x" : ""}</td><td>${mine[1] ? "x" : ""}</td><td>${mine[2] ? "x" : carry ? "1.5" : ""}</td>`;
+      body += `<td class="person-start">${off ? "off" : ""}</td><td>${mine[0] ? "x" : ""}</td><td>${mine[1] ? "x" : ""}</td><td>${mine[2] ? "x" : carry ? "1.5" : ""}</td>`;
     });
     body += "</tr>";
   }
@@ -2202,9 +2204,9 @@ function buildDispatchPrintPage(group, staffList, assignments, y, m, buddhistYea
     </table>
     <table class="official-table dispatch-table">${nameRow}${subRow}${body}</table>
     <div class="pf-footer" style="margin-top:14px;align-items:flex-start;">
+      <div class="pf-col" style="flex:1;padding-top:22px;"><div class="pf-sign-space"></div><div>${F.signerName}</div><div>${F.signerTitle}</div></div>
       <div class="pf-col" style="text-align:left;flex:1;padding-top:30px;"><div>หมายเหตุ &nbsp; ${escapeHtml(F.note1)}</div><div style="padding-left:52px;">${escapeHtml(F.note2)}</div></div>
       <div class="pf-col" style="flex:1.2;"><div>${F.approval}</div><div class="pf-sign-space"></div><div class="pf-sign-space"></div><div style="margin-top:8px;">${escapeHtml(F.managerName)}</div><div>${escapeHtml(F.managerTitle)}</div></div>
-      <div class="pf-col" style="flex:1;padding-top:22px;"><div class="pf-sign-space"></div><div>${F.signerName}</div><div>${F.signerTitle}</div></div>
     </div>
   </div>`;
 }
