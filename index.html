@@ -467,6 +467,9 @@ body.printing-form #printFormArea{display:block;}
 }
 @media print{
   html.app-mode,html.app-mode body,html.app-mode #appScreen,html.app-mode .shell,html.app-mode .main,html.app-mode .auth-wrap{height:auto !important;overflow:visible !important;}
+  html,html.app-mode,body,html.app-mode body{background:#fff !important;min-height:0 !important;}
+  body.printing-form .auth-wrap,body.printing-form #appScreen{display:none !important;}
+  body.printing-form{margin:0;padding:0;}
 }
 </style>
 </head>
