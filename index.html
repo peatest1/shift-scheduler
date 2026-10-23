@@ -1815,6 +1815,7 @@ async function renderScheduleGrid() {
       : Array.from({ length: fixedSlots }, (_, i) => i);
     const daySlots = assignments[String(d)] || [null, null, null];
     const origSlots = origAssign ? (origAssign[String(d)] || [null, null, null]) : null;
+    const prevSlots = isDispatchGroup(group) ? (assignments[String(d - 1)] || [null, null, null]) : null;
 
     body += `<tr class="${rowClass}"><td class="sticky-col">${d}</td><td class="sticky-col sticky-col2">${THAI_DOW[dow]}${isHoliday ? " •" : ""}</td>`;
     staffList.forEach((s, i) => {
@@ -1825,11 +1826,12 @@ async function renderScheduleGrid() {
         const changed = origSlots && ((origSlots[shiftIdx] === s.id) !== isMe);
         const borderClass = (shiftIdx === 2 ? " emp-border-end" : "") + (changed ? " changed" : "");
         if (isMe) perStaffShiftTotal[s.id][shiftIdx]++;
+        const isCarry = shiftIdx === 2 && !isMe && prevSlots && prevSlots[2] === s.id;
         if (!active) {
           body += `<td class="${band}${borderClass}" style="color:#C7C2B4;">·</td>`;
         } else {
-          body += `<td class="${band}${borderClass}"><button class="mini-btn cell-toggle" style="width:100%;${isMe ? "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;" : ""}"
-            data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}">${isMe ? "X" : ""}</button></td>`;
+          body += `<td class="${band}${borderClass}"><button class="mini-btn cell-toggle" style="width:100%;${isMe ? "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;" : (isCarry ? "background:#FDE7C8;border-color:#D97706;color:#92400E;font-weight:700;" : "")}"
+            data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}" title="${isCarry ? "ต่อเนื่องจากกะ3 เมื่อวาน (นับ 1.5)" : ""}">${isMe ? "X" : (isCarry ? "1.5" : "")}</button></td>`;
         }
       }
     });
@@ -2346,7 +2348,7 @@ function buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, mo
       <div class="pf-col">
         <div>เรียน ${s.footerLeftAddressee}</div>
         <div>${s.footerLeftPurpose}</div>
-        <div class="pf-sign-space"></div>
+        <div class="pf-sign-space" style="height:39px;"></div>
         <div>${s.footerLeftSignerName}</div>
         <div>${s.footerLeftSignerTitle}</div>
       </div>
