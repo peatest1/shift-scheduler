@@ -1869,8 +1869,9 @@ async function renderScheduleGrid() {
   const origAssign = originalDoc ? originalDoc.assignments || {} : null;
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
   if (!ownStaff.length) { box.innerHTML = `<div class="empty-hint">กลุ่มนี้ยังไม่มีพนักงาน</div>`; return; }
-  // คนจากชุดอื่นที่แลกเวรเข้ามา จะแสดงเป็นคอลัมน์ต่อท้าย
-  const staffList = ownStaff.concat(findGuestStaff(ownStaff, await getAllStaff(), assignments));
+  // หน้าจัดตารางเวร (สำหรับแก้ไข) แสดงเฉพาะพนักงานของชุดนี้เท่านั้น ไม่ดึงคนจากชุดอื่นที่แลกเวรเข้ามาแสดงเป็นคอลัมน์เพิ่ม (ดูเยอะเกินไป)
+  // คนที่แลกเวรเข้ามายังมีผลในตารางจริง เพียงแต่แก้ไข/ดูช่องของเขาได้จากชุดต้นสังกัดของเขาเอง หรือดูสรุปได้ที่ปฏิทินเวร/ฟอร์มพิมพ์
+  const staffList = ownStaff;
   const numDays = daysInMonth(yyyyMm);
   const [y, m] = yyyyMm.split("-").map(Number);
   const isDuty = isDutyRosterGroup(group);
