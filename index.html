@@ -1005,7 +1005,8 @@ function isDutyRosterGroup(group) {
   return group.isWeekdayVariable ?? (group.name || "").includes("พนักงานอยู่เวร");
 }
 // ---- พนักงานสั่งการ: หมุนเวร 3 คน รอบละ 6 วัน (กะ1, พักกะ, กะ2, กะ2, กะ3, กะ1) เหลื่อมกันคนละ 2 วัน ----
-// ตามแบบฟอร์มที่ใช้จริง: ทุกวันมี กะ1 และ กะ2 ครบ ส่วน กะ3 มีวันเว้นวัน (วันถัดไปแสดง 1.5)
+// ตามแบบฟอร์มที่ใช้จริง: ทุกวันมี กะ1 และ กะ2 ครบ ส่วน กะ3 มีวันเว้นวันตามรอบปกติ (ไม่ต้องมีคนเพิ่ม)
+// หมายเหตุ: 1.5 จะเกิดเฉพาะกรณีคนเดียวกันอยู่เวรกะ1และกะ3 "ของวันเดียวกัน" เท่านั้น (เช่นแลกเวร/มอบหมายเสริม นอกเหนือรอบหมุนอัตโนมัติ)
 const DISPATCH_CYCLE = [0, -1, 1, 1, 2, 0]; // ค่า = ช่วง/กะ (0=กะ1,1=กะ2,2=กะ3) , -1 = พักกะ
 const DISPATCH_EPOCH = new Date(2026, 9, 1); // รอบเริ่มต้นอ้างอิง: 1 ต.ค. 2569 คนที่ 1 ได้ กะ1 (ทำให้เดือนต่อเดือนต่อเนื่องกัน)
 function isDispatchGroup(group) {
@@ -1889,28 +1890,32 @@ async function renderScheduleGrid() {
   const numDays = daysInMonth(yyyyMm);
   const [y, m] = yyyyMm.split("-").map(Number);
   const isDuty = isDutyRosterGroup(group);
-  const fixedSlots = Number(document.getElementById("slotsPerDayInput").value) || group.slotsPerDay || 3;
+  // ช่องจำนวนช่วงเวร/วัน ถูกซ่อนไว้สำหรับกลุ่ม "พนักงานอยู่เวร" และ "พนักงานสั่งการ" (ดู onScheduleTabSelect)
+  // ค่าที่ค้างอยู่ในช่องนั้นอาจเป็นของกลุ่มก่อนหน้า จึงใช้ group.slotsPerDay ตรงๆ แทนเพื่อไม่ให้ช่วงที่ 3 หายไปผิดๆ
+  const fixedSlots = (isDuty || isDispatchGroup(group)) ? (group.slotsPerDay || 3) : (Number(document.getElementById("slotsPerDayInput").value) || group.slotsPerDay || 3);
+  // จำนวนคอลัมน์ย่อยต่อคนจริง: กลุ่มพนักงานอยู่เวรต้องมีครบ 3 เสมอ (สลับ 2/3 ตามวัน) ส่วนกลุ่มอื่นใช้ตามจำนวนช่วงเวร/วันจริงของกลุ่มนั้น ไม่ต้องมีคอลัมน์เกินให้ว่างเปล่า
+  const numCols = isDuty ? 3 : fixedSlots;
 
   // colgroup ให้ทุกคอลัมน์พนักงานกว้างเท่ากันเป๊ะ ไม่ขึ้นกับความยาวชื่อ
   let colgroup = `<colgroup><col style="width:44px"><col style="width:38px">` +
-    staffList.map(() => `<col style="width:58px"><col style="width:58px"><col style="width:58px">`).join("") +
+    staffList.map(() => Array.from({ length: numCols }, () => `<col style="width:58px">`).join("")).join("") +
     `</colgroup>`;
 
-  // แถวหัวตาราง 1: ชื่อพนักงาน (colspan 3), แถวหัวตาราง 2: ช่วง1/ช่วง2/ช่วง3 — สลับสีพื้นหลังตามพนักงานแต่ละคนให้แยกกลุ่มชัดเจน
+  // แถวหัวตาราง 1: ชื่อพนักงาน (colspan numCols), แถวหัวตาราง 2: ช่วง1/ช่วง2/... — สลับสีพื้นหลังตามพนักงานแต่ละคนให้แยกกลุ่มชัดเจน
   // (ใช้ class .sticky-col/.sticky-col2 อย่างชัดเจนแทน nth-child เพื่อไม่ให้หลุดไปโดนคอลัมน์อื่นตอนมี colspan/rowspan)
   let headRow1 = `<tr><th rowspan="2" class="sticky-col">วันที่</th><th rowspan="2" class="sticky-col sticky-col2">วัน</th>`;
   let headRow2 = "<tr>";
   staffList.forEach((s, i) => {
     const band = i % 2 === 0 ? "emp-a" : "emp-b";
-    headRow1 += `<th colspan="3" class="${band} emp-border-end${s.isGuest ? " guest" : ""}">${escapeHtml(s.name)}<br><span style="font-weight:400;font-size:11px;">${escapeHtml(s.empId)}${s.isGuest ? " · ชุดอื่น" : ""}</span></th>`;
+    headRow1 += `<th colspan="${numCols}" class="${band} emp-border-end${s.isGuest ? " guest" : ""}">${escapeHtml(s.name)}<br><span style="font-weight:400;font-size:11px;">${escapeHtml(s.empId)}${s.isGuest ? " · ชุดอื่น" : ""}</span></th>`;
     const lb = isDispatchGroup(group) ? "กะ" : "ช่วง";
-    headRow2 += `<th class="${band}">${lb}1</th><th class="${band}">${lb}2</th><th class="${band} emp-border-end">${lb}3</th>`;
+    for (let i2 = 0; i2 < numCols; i2++) headRow2 += `<th class="${band}${i2 === numCols - 1 ? " emp-border-end" : ""}">${lb}${i2 + 1}</th>`;
   });
   headRow1 += "</tr>"; headRow2 += "</tr>";
 
   let body = "";
-  const perStaffShiftTotal = {}; // staffId -> [c1,c2,c3]
-  staffList.forEach((s) => perStaffShiftTotal[s.id] = [0, 0, 0]);
+  const perStaffShiftTotal = {}; // staffId -> [c1,c2,...]
+  staffList.forEach((s) => perStaffShiftTotal[s.id] = Array.from({ length: numCols }, () => 0));
 
   for (let d = 1; d <= numDays; d++) {
     const dateObj = new Date(y, m - 1, d);
@@ -1924,23 +1929,24 @@ async function renderScheduleGrid() {
       : Array.from({ length: fixedSlots }, (_, i) => i);
     const daySlots = assignments[String(d)] || [null, null, null];
     const origSlots = origAssign ? (origAssign[String(d)] || [null, null, null]) : null;
-    const prevSlots = isDispatchGroup(group) ? (assignments[String(d - 1)] || [null, null, null]) : null;
 
     body += `<tr class="${rowClass}"><td class="sticky-col">${d}</td><td class="sticky-col sticky-col2">${THAI_DOW[dow]}${isHoliday ? " •" : ""}</td>`;
     staffList.forEach((s, i) => {
       const band = i % 2 === 0 ? "emp-a" : "emp-b";
-      for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
+      for (let shiftIdx = 0; shiftIdx < numCols; shiftIdx++) {
         const active = activeIdx.includes(shiftIdx);
         const isMe = daySlots[shiftIdx] === s.id;
         const changed = origSlots && ((origSlots[shiftIdx] === s.id) !== isMe);
-        const borderClass = (shiftIdx === 2 ? " emp-border-end" : "") + (changed ? " changed" : "");
-        if (isMe) perStaffShiftTotal[s.id][shiftIdx]++;
-        const isCarry = shiftIdx === 2 && !isMe && prevSlots && prevSlots[2] === s.id;
+        const borderClass = (shiftIdx === numCols - 1 ? " emp-border-end" : "") + (changed ? " changed" : "");
+        // คนเดียวกันอยู่เวร "กะ1" และ "กะ3" ของวันเดียวกัน (เช่นแลกเวร/มอบหมายเสริม) นับรวมเป็น 1.5 แทนที่จะเป็น 2 เต็ม
+        // เพราะช่วงกลางวัน (กะ2) เขามาทำงานปกติอยู่แล้ว ไม่ได้ถือเป็นการอยู่เวรเพิ่ม
+        const isDoubleDuty = shiftIdx === 2 && isMe && daySlots[0] === s.id;
+        if (isMe) perStaffShiftTotal[s.id][shiftIdx] += isDoubleDuty ? 0.5 : 1;
         if (!active) {
           body += `<td class="${band}${borderClass}" style="color:#C7C2B4;">·</td>`;
         } else {
-          body += `<td class="${band}${borderClass}"><button class="mini-btn cell-toggle" style="width:100%;${isMe ? "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;" : (isCarry ? "background:#FDE7C8;border-color:#D97706;color:#92400E;font-weight:700;" : "")}"
-            data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}" title="${isCarry ? "ต่อเนื่องจากกะ3 เมื่อวาน (นับ 1.5)" : ""}">${isMe ? "X" : (isCarry ? "1.5" : "")}</button></td>`;
+          body += `<td class="${band}${borderClass}"><button class="mini-btn cell-toggle" style="width:100%;${isDoubleDuty ? "background:#FDE7C8;border-color:#D97706;color:#92400E;font-weight:700;" : (isMe ? "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;" : "")}"
+            data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}" title="${isDoubleDuty ? "อยู่เวรกะ1และกะ3 วันเดียวกัน (นับ 1.5)" : ""}">${isDoubleDuty ? "1.5" : (isMe ? "X" : "")}</button></td>`;
         }
       }
     });
@@ -1951,14 +1957,14 @@ async function renderScheduleGrid() {
   staffList.forEach((s, i) => {
     const band = i % 2 === 0 ? "emp-a" : "emp-b";
     const t = perStaffShiftTotal[s.id];
-    totalRow1 += `<td class="${band}">${t[0]}</td><td class="${band}">${t[1]}</td><td class="${band} emp-border-end">${t[2]}</td>`;
+    for (let i2 = 0; i2 < numCols; i2++) totalRow1 += `<td class="${band}${i2 === numCols - 1 ? " emp-border-end" : ""}">${t[i2]}</td>`;
   });
   totalRow1 += "</tr>";
   let totalRow2 = `<tr><td colspan="2" class="name-cell sticky-col">รวมทั้งหมด</td>`;
   staffList.forEach((s, i) => {
     const band = i % 2 === 0 ? "emp-a" : "emp-b";
     const t = perStaffShiftTotal[s.id];
-    totalRow2 += `<td colspan="3" class="${band} emp-border-end">${t[0] + t[1] + t[2]}</td>`;
+    totalRow2 += `<td colspan="${numCols}" class="${band} emp-border-end">${t.reduce((a, b) => a + b, 0)}</td>`;
   });
   totalRow2 += "</tr>";
 
@@ -2296,13 +2302,13 @@ function buildDispatchPrintPage(group, staffList, assignments, y, m, buddhistYea
     // สีแถวให้เหมือนฟอร์มของพนักงานอยู่เวรทั้ง 3 ชุด: เทาวันเสาร์-อาทิตย์ ส้มวันหยุด แดงวันอาทิตย์ที่ช่องวันที่/วัน
     const rowClasses = [(isHoliday ? "pf-holiday" : ""), ((isSun || isSat) && !isHoliday ? "pf-weekend" : ""), (isSun ? "pf-sun" : "")].filter(Boolean).join(" ");
     const today = assignments[String(d)] || [null, null, null];
-    const prev = assignments[String(d - 1)] || [null, null, null];
     body += `<tr class="${rowClasses}"><td>${d}</td><td>${THAI_DOW[dow]}</td>`;
     people.forEach((st) => {
       const mine = [0, 1, 2].map((i) => today[i] === st.id);
       const off = !mine.some(Boolean);
-      const carry = prev[2] === st.id; // ทำกะ3 เมื่อวาน → วันนี้แสดง 1.5
-      body += `<td class="person-start">${off ? "off" : ""}</td><td>${mine[0] ? "x" : ""}</td><td>${mine[1] ? "x" : ""}</td><td>${mine[2] ? "x" : carry ? "1.5" : ""}</td>`;
+      // อยู่เวรกะ1 และกะ3 ของวันเดียวกัน (เช่นแลกเวร/มอบหมายเสริม) นับเป็น 1.5 แทน x เต็ม เพราะกะ2 (กลางวัน) มาทำงานปกติอยู่แล้ว
+      const doubleDuty = mine[0] && mine[2];
+      body += `<td class="person-start">${off ? "off" : ""}</td><td>${mine[0] ? "x" : ""}</td><td>${mine[1] ? "x" : ""}</td><td>${mine[2] ? (doubleDuty ? "1.5" : "x") : ""}</td>`;
     });
     body += "</tr>";
   }
