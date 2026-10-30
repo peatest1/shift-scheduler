@@ -275,7 +275,11 @@ body.printing-form #printFormArea{display:block;}
   .print-page.dispatch{page:dispatch;}
   .print-page{page-break-after:always;width:100%;min-height:0;padding:0;margin:0;}
   .print-page:last-child{page-break-after:auto;}
+  /* ปฏิทินเวร: ซ่อนหัวข้อ/คำอธิบายปกติ โชว์แค่ "เดือน พ.ศ." แทน */
+  #view-calendar .page-head{display:none;}
+  .cal-print-title{display:block !important;}
 }
+.cal-print-title{display:none;font-size:16px;font-weight:700;margin-bottom:10px;}
 
 /* ---------- calendar-based swap/cover initiation ---------- */
 .cal-controls-row{display:flex;align-items:flex-end;gap:12px;}
@@ -581,6 +585,7 @@ body.printing-form #printFormArea{display:block;}
         </div>
       </div>
       <div class="cal-mode-banner hidden no-print" id="calModeBanner"></div>
+      <p class="cal-print-title" id="calPrintTitle"></p>
       <div class="panel scroll-x"><div id="calendarBox" class="empty-hint">เลือกเดือนเพื่อดูปฏิทินเวร</div></div>
 
       <details class="panel opt-panel no-print" id="swapHistoryPanel">
@@ -2060,6 +2065,8 @@ function isDutyShiftActive(shiftIdx, dow, isHoliday) {
 async function renderCalendar() {
   const box = document.getElementById("calendarBox");
   const yyyyMm = document.getElementById("calendarMonthInput").value || currentYyyyMm();
+  const [py, pm] = yyyyMm.split("-").map(Number);
+  document.getElementById("calPrintTitle").textContent = `เดือน ${THAI_MONTHS[pm - 1]} พ.ศ. ${py + 543}`;
   if (!box.firstElementChild) box.innerHTML = `<div class="loading-hint"><span class="spinner"></span>กำลังโหลด…</div>`; else box.style.opacity = ".55";
   if (!allGroups.length) allGroups = await getGroups();
   const dutyGroups = allGroups.filter(isDutyRosterGroup).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -2737,31 +2744,62 @@ async function buildAndPrintCompForm() {
   const numDays = daysInMonth(yyyyMm);
   if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
 
-  const dutyStaff = await getAllDutyStaffWithGroup();
-  if (!dutyStaff.length) { alert("ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวรเลย ไม่สามารถสร้างแบบฟอร์มได้"); return; }
   if (!allGroups.length) allGroups = await getGroups();
-  const dutyGroups = allGroups.filter(isDutyRosterGroup);
-  const [assignByGroup, settings, overrides] = await Promise.all([
-    Promise.all(dutyGroups.map(async (g) => [g.id, (await loadSchedule(g.id, yyyyMm)) || {}])).then(Object.fromEntries),
+  const dutyGroups = allGroups.filter(isDutyRosterGroup).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!dutyGroups.length) { alert("ยังไม่มีกลุ่มพนักงานอยู่เวรในระบบ ไม่สามารถสร้างแบบฟอร์มได้"); return; }
+
+  const [groupStaffLists, settings] = await Promise.all([
+    Promise.all(dutyGroups.map((g) => getStaffByGroup(g.id))),
     getCompSettings(),
-    Promise.all(dutyStaff.map((s) => getCompOverride(s.id, yyyyMm))),
   ]);
+  const dutyStaff = groupStaffLists.flat();
+  if (!dutyStaff.length) { alert("ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวรเลย ไม่สามารถสร้างแบบฟอร์มได้"); return; }
+  const [assignByGroup, overrideList] = await Promise.all([
+    Promise.all(dutyGroups.map(async (g) => [g.id, (await loadSchedule(g.id, yyyyMm)) || {}])).then(Object.fromEntries),
+    Promise.all(dutyStaff.map((st) => getCompOverride(st.id, yyyyMm))),
+  ]);
+  const overrideMap = {}; dutyStaff.forEach((st, i) => overrideMap[st.id] = overrideList[i]);
   const today = new Date();
   const printDateThai = `${today.getDate()} ${THAI_MONTHS[today.getMonth()]} ${today.getFullYear() + 543}`;
 
-  document.getElementById("printFormArea").innerHTML = buildCompPrintPage(dutyStaff, overrides, assignByGroup, y, m, buddhistYear, monthName, numDays, settings, printDateThai);
+  // คำนวณยอดรวมทั้งหมดทุกชุดไว้ก่อน เพื่อแสดงในหน้าสุดท้าย
+  let overallGrandSum = 0;
+  dutyGroups.forEach((g, gi) => {
+    groupStaffLists[gi].forEach((st) => {
+      let autoCount = 0;
+      for (let d = 1; d <= numDays; d++) {
+        const dateObj = new Date(y, m - 1, d);
+        const dow = dateObj.getDay();
+        const isHoliday = !!holidaysMap[todayISO(y, m, d)];
+        const active = (dow === 0 || dow === 6 || isHoliday) ? [0, 1, 2] : [0, 2];
+        for (const shiftIdx of active) {
+          if (Object.values(assignByGroup).some((a) => (a[String(d)] || [])[shiftIdx] === st.id)) autoCount++;
+        }
+      }
+      const used = overrideMap[st.id] != null ? overrideMap[st.id] : autoCount;
+      overallGrandSum += used * shiftRate(st.salary);
+    });
+  });
+
+  let pagesHtml = "";
+  dutyGroups.forEach((g, gi) => {
+    pagesHtml += buildCompPrintPage(g, groupStaffLists[gi], overrideMap, assignByGroup, y, m, buddhistYear, monthName, numDays, settings, printDateThai, gi === dutyGroups.length - 1, overallGrandSum);
+  });
+
+  document.getElementById("printFormArea").innerHTML = pagesHtml;
   document.body.classList.add("printing-form");
   setTimeout(() => window.print(), 50);
 }
 document.getElementById("printCompBtn").onclick = buildAndPrintCompForm;
 
-function buildCompPrintPage(dutyStaff, overrides, assignByGroup, y, m, buddhistYear, monthName, numDays, s, printDateThai) {
-  const nameRow = `<tr><th rowspan="3" style="width:5%;">วันที่</th><th rowspan="3" style="width:4%;">วัน</th>` +
-    dutyStaff.map((st) => `<th colspan="3">${escapeHtml(st.name)}</th>`).join("") + `</tr>`;
-  const empIdRow = `<tr>` + dutyStaff.map((st) => `<th colspan="3">${escapeHtml(st.empId)}</th>`).join("") + `</tr>`;
-  const subHeadRow = `<tr>` + dutyStaff.map(() => `<th>ช่วง1</th><th>ช่วง2</th><th>ช่วง3</th>`).join("") + `</tr>`;
+// สร้าง 1 หน้าแยกต่อชุดอยู่เวร (เหมือนแบบฟอร์มจัดตารางเวรปกติ) — ยอดรวมเงินทั้งหมดทุกชุด + ลายเซ็น แสดงเฉพาะหน้าสุดท้าย
+function buildCompPrintPage(group, staffList, overrideMap, assignByGroup, y, m, buddhistYear, monthName, numDays, s, printDateThai, isLastPage, overallGrandSum) {
+  const nameRow = `<tr><th rowspan="3" style="width:5.5%;">วันที่</th><th rowspan="3" style="width:4%;">วัน</th>` +
+    staffList.map((st) => `<th colspan="3">${escapeHtml(st.name)}</th>`).join("") + `</tr>`;
+  const empIdRow = `<tr>` + staffList.map((st) => `<th colspan="3">${escapeHtml(st.empId)}</th>`).join("") + `</tr>`;
+  const subHeadRow = `<tr>` + staffList.map(() => `<th>ช่วง1</th><th>ช่วง2</th><th>ช่วง3</th>`).join("") + `</tr>`;
 
-  const totals = {}; dutyStaff.forEach((st) => totals[st.id] = [0, 0, 0]);
+  const totals = {}; staffList.forEach((st) => totals[st.id] = [0, 0, 0]);
   let bodyRows = "";
   for (let d = 1; d <= numDays; d++) {
     const dateObj = new Date(y, m - 1, d);
@@ -2772,7 +2810,7 @@ function buildCompPrintPage(dutyStaff, overrides, assignByGroup, y, m, buddhistY
     const rowClasses = [(isHoliday ? "pf-holiday" : ""), ((isSun || isSat) && !isHoliday ? "pf-weekend" : ""), (isSun ? "pf-sun" : "")].filter(Boolean).join(" ");
     const active = (isSun || isSat || isHoliday) ? [0, 1, 2] : [0, 2];
     bodyRows += `<tr class="${rowClasses}"><td>${d}</td><td>${THAI_DOW[dow]}</td>`;
-    dutyStaff.forEach((st) => {
+    staffList.forEach((st) => {
       for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
         // เช็คทุกกลุ่มอยู่เวร เผื่อเวรนี้ได้มาจากการแลกเวรข้ามชุด
         const isMe = active.includes(shiftIdx) && Object.values(assignByGroup).some((a) => (a[String(d)] || [])[shiftIdx] === st.id);
@@ -2785,15 +2823,16 @@ function buildCompPrintPage(dutyStaff, overrides, assignByGroup, y, m, buddhistY
 
   let totalRow = `<tr class="pf-total-row"><td colspan="2">รวมเวร</td>`;
   let grandRow = `<tr class="pf-total-row"><td colspan="2">รวมเงิน (บาท)</td>`;
-  let grandSum = 0;
-  dutyStaff.forEach((st, i) => {
+  let pageSum = 0;
+  staffList.forEach((st) => {
     const t = totals[st.id];
     const auto = t[0] + t[1] + t[2];
-    const used = overrides[i] != null ? overrides[i] : auto;
+    const ov = overrideMap[st.id];
+    const used = ov != null ? ov : auto;
     const amount = used * shiftRate(st.salary);
-    grandSum += amount;
+    pageSum += amount;
     totalRow += `<td>${t[0]}</td><td>${t[1]}</td><td>${t[2]}</td>`;
-    grandRow += `<td colspan="3">${fmtBaht(amount)}${overrides[i] != null ? ` (ปรับเป็น ${overrides[i]} เวร)` : ""}</td>`;
+    grandRow += `<td colspan="3">${fmtBaht(amount)}${ov != null ? ` (ปรับเป็น ${ov} เวร)` : ""}</td>`;
   });
   totalRow += "</tr>"; grandRow += "</tr>";
 
@@ -2811,7 +2850,7 @@ function buildCompPrintPage(dutyStaff, overrides, assignByGroup, y, m, buddhistY
       <tr><td class="pf-meta-label">เลขที่</td><td></td><td class="pf-meta-label">วันที่</td><td>${printDateThai}</td></tr>
       <tr><td class="pf-meta-label">เรื่อง</td><td colspan="3">${s.subject} ประจำเดือน ${monthName} ${buddhistYear}</td></tr>
       <tr><td class="pf-meta-label">เรียน</td><td colspan="3">${s.addressee}</td></tr>
-      <tr><td></td><td colspan="3">${s.body} ของ ${s.officeLine || ""} ประจำเดือน ${monthName} พ.ศ.${buddhistYear} ดังนี้</td></tr>
+      <tr><td></td><td colspan="3">${s.body} ของ ${s.officeLine || ""} ประจำเดือน ${monthName} พ.ศ.${buddhistYear} ดังนี้ — ${escapeHtml(group.name)}</td></tr>
     </table>
     <table class="official-table">
       ${nameRow}${empIdRow}${subHeadRow}${bodyRows}${totalRow}${grandRow}
@@ -2821,7 +2860,9 @@ function buildCompPrintPage(dutyStaff, overrides, assignByGroup, y, m, buddhistY
       <span>ช่วง 2 (8 ชม.) เวลา 08.30-16.30 น.</span>
       <span>ช่วง 3 (8 ชม.) เวลา 16.30-00.30 น.</span>
     </div>
-    <p style="margin-top:4px;font-weight:700;">รวมค่าตอบแทนทั้งหมด ${fmtBaht(grandSum)} บาท</p>
+    <p style="margin-top:4px;font-weight:700;">รวมค่าตอบแทน ${escapeHtml(group.name)}: ${fmtBaht(pageSum)} บาท</p>
+    ${isLastPage ? `
+    <p style="margin-top:4px;font-weight:700;">รวมค่าตอบแทนทั้งหมดทุกชุด: ${fmtBaht(overallGrandSum)} บาท</p>
     <div class="pf-footer">
       <div class="pf-col">
         <div class="pf-sign-space"></div>
@@ -2835,7 +2876,7 @@ function buildCompPrintPage(dutyStaff, overrides, assignByGroup, y, m, buddhistY
         <div>${escapeHtml(s.managerTitle || "")}</div>
         <div>ผู้อนุมัติ</div>
       </div>
-    </div>
+    </div>` : ""}
   </div>`;
 }
 
