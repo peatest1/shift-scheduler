@@ -507,7 +507,13 @@ body.printing-form #printFormArea{display:block;}
       <div class="field"><label>รหัสพนักงาน</label><input type="text" id="regEmpId" placeholder="เช่น 501398" required></div>
       <div class="field"><label>อีเมลที่ใช้เข้าสู่ระบบ</label><input type="email" id="regEmail" required></div>
       <div class="field"><label>ตั้งรหัสผ่าน (อย่างน้อย 6 ตัวอักษร)</label><input type="password" id="regPassword" minlength="6" required></div>
-      <div class="checkbox-row"><input type="checkbox" id="regIsAdmin"><label for="regIsAdmin" style="margin:0;">สมัครเป็นแอดมิน (ต้องมีรหัสตั้งค่าระบบ)</label></div>
+      <div class="field"><label>ประเภทบัญชี</label>
+        <select id="regRole">
+          <option value="staff">พนักงาน</option>
+          <option value="admin">แอดมิน (ต้องมีรหัสตั้งค่าระบบ)</option>
+          <option value="payroll">ผู้ดูแลค่าตอบแทน (ต้องมีรหัสตั้งค่าระบบ)</option>
+        </select>
+      </div>
       <div class="field hidden" id="adminKeyField"><label>รหัสตั้งค่าระบบ (Admin setup key)</label><input type="password" id="regAdminKey"></div>
       <button class="btn btn-primary" type="submit">สมัครสมาชิก</button>
       <p class="auth-sub" style="margin-top:12px;">* พนักงานทั่วไปต้องให้แอดมินเพิ่มชื่อ-รหัสพนักงานในระบบก่อน จึงจะสมัครสมาชิกผูกกับรหัสพนักงานนั้นได้</p>
@@ -544,6 +550,7 @@ body.printing-form #printFormArea{display:block;}
     <div class="nav-item admin-only" data-view="schedule">จัดตารางเวร</div>
     <div class="nav-item admin-only" data-view="staff">จัดการพนักงาน</div>
     <div class="nav-item admin-only" data-view="holidays">ปฏิทิน / วันหยุด</div>
+    <div class="nav-item" data-view="comp">ค่าตอบแทน</div>
     <div class="sidebar-foot">
       <div class="who" id="whoBox">กำลังโหลด...</div>
       <button class="btn btn-ghost btn-small" id="logoutBtn" style="width:100%;">ออกจากระบบ</button>
@@ -602,6 +609,41 @@ body.printing-form #printFormArea{display:block;}
         </div>
       </div>
       <div class="panel"><h3>รายชื่อพนักงานในกลุ่ม (ลำดับมีผลต่อการหมุนเวรอัตโนมัติ)</h3><div id="staffListBox"></div></div>
+    </section>
+
+    <section class="view" id="view-comp">
+      <div class="page-head"><div><h2>ค่าตอบแทนการอยู่เวร</h2><p>เฉพาะพนักงานอยู่เวร 3 ชุด · อัตรา = (เงินเดือน ÷ 210) × 8 บาท/กะ</p></div></div>
+
+      <div class="panel no-print">
+        <div class="row-flex" style="align-items:flex-end;">
+          <div class="field" style="max-width:200px;margin-bottom:0;"><label>เดือน</label><input type="month" id="compMonthInput"></div>
+          <button class="btn btn-ghost comp-admin-only" id="printCompBtn" style="height:38px;">🖨️ พิมพ์แบบฟอร์มเบิกค่าตอบแทน</button>
+        </div>
+      </div>
+
+      <details class="panel opt-panel comp-admin-only" id="compSettingsPanel">
+        <summary>📝 ตั้งค่าแบบฟอร์มพิมพ์ ค่าตอบแทน</summary>
+        <div class="opt-body">
+          <div class="row-flex">
+            <div class="field grow"><label>จาก</label><input type="text" id="cfFrom"></div>
+            <div class="field grow"><label>ถึง</label><input type="text" id="cfTo"></div>
+          </div>
+          <div class="field"><label>เรื่อง</label><input type="text" id="cfSubject"></div>
+          <div class="field"><label>เรียน</label><input type="text" id="cfAddressee"></div>
+          <div class="field"><label>ข้อความชี้แจง (ระบบต่อท้ายด้วย "ประจำเดือน … พ.ศ. … ดังนี้" ให้อัตโนมัติ)</label><input type="text" id="cfBody"></div>
+          <div class="row-flex">
+            <div class="field grow"><label>ชื่อผู้ลงนาม (ผู้ขออนุมัติ)</label><input type="text" id="cfSignerName"></div>
+            <div class="field grow"><label>ตำแหน่งผู้ลงนาม</label><input type="text" id="cfSignerTitle"></div>
+          </div>
+          <div class="row-flex">
+            <div class="field grow"><label>ชื่อผู้บริหารผู้อนุมัติ</label><input type="text" id="cfManagerName"></div>
+            <div class="field grow"><label>ตำแหน่งผู้บริหาร</label><input type="text" id="cfManagerTitle"></div>
+          </div>
+          <button class="btn btn-primary btn-small" id="saveCompSettingsBtn" style="width:auto;">บันทึกการตั้งค่าแบบฟอร์ม</button>
+        </div>
+      </details>
+
+      <div class="panel scroll-x"><div id="compBox" class="empty-hint">กำลังโหลด...</div></div>
     </section>
 
     <section class="view" id="view-holidays">
@@ -1264,7 +1306,12 @@ const loginForm = document.getElementById("loginForm");
 const registerForm = document.getElementById("registerForm");
 tabLoginBtn.onclick = () => { tabLoginBtn.classList.add("active"); tabRegisterBtn.classList.remove("active"); loginForm.style.display = ""; registerForm.style.display = "none"; clearMsg(); };
 tabRegisterBtn.onclick = () => { tabRegisterBtn.classList.add("active"); tabLoginBtn.classList.remove("active"); registerForm.style.display = ""; loginForm.style.display = "none"; clearMsg(); };
-document.getElementById("regIsAdmin").onchange = (e) => { document.getElementById("adminKeyField").classList.toggle("hidden", !e.target.checked); };
+document.getElementById("regRole").onchange = (e) => {
+  const role = e.target.value;
+  document.getElementById("adminKeyField").classList.toggle("hidden", role === "staff");
+  // ผู้ดูแลค่าตอบแทน ไม่จำเป็นต้องเป็นพนักงานอยู่เวร จึงไม่บังคับกรอกรหัสพนักงาน
+  document.getElementById("regEmpId").required = role !== "payroll";
+};
 
 function friendlyError(err) {
   const code = err.code || "";
@@ -1290,19 +1337,19 @@ registerForm.addEventListener("submit", async (e) => {
   const empId = document.getElementById("regEmpId").value.trim();
   const email = document.getElementById("regEmail").value.trim();
   const password = document.getElementById("regPassword").value;
-  const isAdmin = document.getElementById("regIsAdmin").checked;
+  const regRole = document.getElementById("regRole").value; // "staff" | "admin" | "payroll"
   const adminKey = document.getElementById("regAdminKey").value;
 
-  if (isAdmin) {
+  if (regRole !== "staff") {
     if (adminKey !== ADMIN_SETUP_KEY) { showMsg("รหัสตั้งค่าระบบไม่ถูกต้อง", true); return; }
     registrationInProgress = true;
     let adminCred = null;
     try {
       adminCred = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "users", adminCred.user.uid), { role: "admin", empId: empId || null, createdAt: Date.now() });
+      await setDoc(doc(db, "users", adminCred.user.uid), { role: regRole, empId: empId || null, createdAt: Date.now() });
     } catch (err) {
       if (adminCred) await deleteUser(adminCred.user).catch(() => signOut(auth));
-      showMsg("สมัครไม่สำเร็จ: " + friendlyError(err) + (String(err.code || "").includes("permission-denied") ? " — ให้สมัครแบบพนักงานก่อน แล้วให้แอดมินเดิมเปลี่ยนสิทธิ์เป็นแอดมินใน Firebase Console" : ""), true);
+      showMsg("สมัครไม่สำเร็จ: " + friendlyError(err) + (String(err.code || "").includes("permission-denied") ? " — ให้สมัครแบบพนักงานก่อน แล้วให้แอดมินเดิมเปลี่ยนสิทธิ์ใน Firebase Console" : ""), true);
     }
     registrationInProgress = false;
     await handleAuthUser(auth.currentUser);
@@ -1354,6 +1401,7 @@ function switchView(name) {
     renderSwapView();
   }
   if (name === "staff") renderOverview();
+  if (name === "comp") renderComp();
   if (name === "schedule" && typeof refreshSkipUI === "function") refreshSkipUI();
   if (currentRole) refreshSwapBadge();
 }
@@ -1407,10 +1455,12 @@ async function handleAuthUser(user) {
     } catch (e) { /* ไม่ร้ายแรง — ยังใช้งานส่วนอื่นได้ */ }
   }
   const isStaffToo = !!currentStaffProfile;
+  const roleLabel = currentRole === "admin" ? "แอดมิน" : currentRole === "payroll" ? "ผู้ดูแลค่าตอบแทน" : "พนักงาน";
   document.getElementById("whoBox").textContent =
-    (currentRole === "admin" ? (isStaffToo ? "แอดมิน + พนักงาน" : "แอดมิน") : "พนักงาน") + " · " + user.email;
+    (roleLabel + (isStaffToo && currentRole !== "staff" ? " + พนักงาน" : "")) + " · " + user.email;
   document.querySelectorAll(".admin-only").forEach((el) => el.style.display = currentRole === "admin" ? "" : "none");
   document.querySelectorAll(".staff-only").forEach((el) => el.style.display = (currentRole === "staff" || isStaffToo) ? "" : "none");
+  document.querySelectorAll(".comp-admin-only").forEach((el) => el.style.display = (currentRole === "admin" || currentRole === "payroll") ? "" : "none");
   renderAdminLinkBox(currentRole === "admin" && !isStaffToo);
 
   switchView("calendar");
@@ -1421,6 +1471,8 @@ async function handleAuthUser(user) {
   document.getElementById("scheduleMonthInput").value = currentYyyyMm();
   document.getElementById("myScheduleMonthInput").value = currentYyyyMm();
   document.getElementById("calendarMonthInput").value = currentYyyyMm();
+  document.getElementById("compMonthInput").value = currentYyyyMm();
+  if (currentRole === "admin" || currentRole === "payroll") await populateCompSettingsForm();
   if (currentRole === "admin") await populatePrintSettingsForm();
   refreshSwapBadge();
 }
@@ -1987,6 +2039,7 @@ async function renderScheduleGrid() {
 // ==========================================================================
 document.getElementById("myScheduleMonthInput").onchange = renderMySchedule;
 document.getElementById("calendarMonthInput").onchange = renderCalendar;
+document.getElementById("compMonthInput").onchange = renderComp;
 document.getElementById("printCalendarBtn").onclick = () => window.print();
 (function () {
   const cb = document.getElementById("calNoHighlightMe");
@@ -2547,6 +2600,242 @@ function buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, mo
         <div>${escapeHtml(s.managerTitle || "")}</div>
       </div>
     </div>` : ""}
+  </div>`;
+}
+
+// ==========================================================================
+// 14.5) ค่าตอบแทนการอยู่เวร — เฉพาะพนักงานอยู่เวร 3 ชุด
+// สูตร: อัตรา/กะ = (เงินเดือน ÷ 210) × 8  ·  จำนวนเวรนับจากตารางเวรจริง (รวมผลการแลกเวร) ปรับยอดด้วยมือได้ (compAdjust)
+// สิทธิ์แก้ไข: แอดมิน, ผู้ดูแลค่าตอบแทน แก้ได้ทุกคน · พนักงานแก้เงินเดือนของตัวเองได้เท่านั้น
+// ==========================================================================
+const DEFAULT_COMP_SETTINGS = {
+  from: "หผ.ปบ.บต.", to: "ผจก.กฟส.เบตง",
+  subject: "ขออนุมัติเบิกจ่ายค่าตอบแทนการปฏิบัติงานนอกเวลาราชการของพนักงานปฏิบัติงานระบบไฟฟ้า",
+  addressee: "ผจก.กฟส.เบตง ผ่าน หผ.ปบ.บต.",
+  body: "เพื่อให้การปฏิบัติงานระบบไฟฟ้าเป็นไปด้วยความเรียบร้อย จึงขออนุมัติเบิกจ่ายค่าตอบแทนการปฏิบัติงานนอกเวลาราชการของพนักงานปฏิบัติงานระบบไฟฟ้า",
+  signerName: "( ผู้จัดทำ )", signerTitle: "หผ.ปบ.บต.",
+};
+async function getCompSettings() {
+  const common = await getPrintFormSettings();
+  let own = {};
+  try { const snap = await getDoc(doc(db, "settings", "printFormComp")); if (snap.exists()) own = snap.data(); } catch (e) {}
+  return { ...DEFAULT_COMP_SETTINGS, ...own, officeLine: common.officeLine, managerName: common.managerName, managerTitle: common.managerTitle };
+}
+const CF_FIELDS = { from: "cfFrom", to: "cfTo", subject: "cfSubject", addressee: "cfAddressee", body: "cfBody", signerName: "cfSignerName", signerTitle: "cfSignerTitle", managerName: "cfManagerName", managerTitle: "cfManagerTitle" };
+async function populateCompSettingsForm() {
+  const s = await getCompSettings();
+  Object.entries(CF_FIELDS).forEach(([k, id]) => { document.getElementById(id).value = s[k]; });
+}
+document.getElementById("saveCompSettingsBtn").onclick = async () => {
+  const values = {};
+  Object.entries(CF_FIELDS).forEach(([k, id]) => { values[k] = document.getElementById(id).value.trim(); });
+  const { managerName, managerTitle, ...own } = values;
+  await setDoc(doc(db, "settings", "printFormComp"), own, { merge: true });
+  await savePrintFormSettings({ managerName, managerTitle });
+  alert("บันทึกการตั้งค่าแบบฟอร์มค่าตอบแทนเรียบร้อย");
+};
+
+function shiftRate(salary) { return (Number(salary) || 0) / 210 * 8; }
+function fmtBaht(n) { return (Number(n) || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// รายชื่อพนักงานอยู่เวร 3 ชุดทั้งหมด เรียงตามลำดับกลุ่ม → ลำดับคนในกลุ่ม
+async function getAllDutyStaffWithGroup() {
+  if (!allGroups.length) allGroups = await getGroups();
+  const dutyGroups = allGroups.filter(isDutyRosterGroup).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const lists = await Promise.all(dutyGroups.map(async (g) => (await getStaffByGroup(g.id)).map((s) => ({ ...s, groupId: g.id, groupName: g.name }))));
+  return lists.flat();
+}
+async function getCompOverride(staffId, yyyyMm) {
+  try {
+    const snap = await getDoc(doc(db, "compAdjust", `${staffId}_${yyyyMm}`));
+    return snap.exists() && snap.data().overrideShifts != null ? snap.data().overrideShifts : null;
+  } catch (e) { return null; }
+}
+async function setCompOverride(staffId, yyyyMm, value) {
+  const id = `${staffId}_${yyyyMm}`;
+  if (value === null) { await deleteDoc(doc(db, "compAdjust", id)).catch(() => {}); }
+  else { await setDoc(doc(db, "compAdjust", id), { overrideShifts: value, updatedAt: Date.now() }); }
+}
+
+async function renderComp() {
+  const box = document.getElementById("compBox");
+  const yyyyMm = document.getElementById("compMonthInput").value || currentYyyyMm();
+  const privileged = currentRole === "admin" || currentRole === "payroll";
+  if (!box.firstElementChild) box.innerHTML = `<div class="loading-hint"><span class="spinner"></span>กำลังโหลด…</div>`; else box.style.opacity = ".55";
+
+  if (privileged) {
+    const dutyStaff = await getAllDutyStaffWithGroup();
+    box.style.opacity = "";
+    if (!dutyStaff.length) { box.innerHTML = `<div class="empty-hint">ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวรเลย</div>`; return; }
+    const [counts, overrides] = await Promise.all([
+      Promise.all(dutyStaff.map((s) => getShiftsOfStaff(s.id, [yyyyMm]))),
+      Promise.all(dutyStaff.map((s) => getCompOverride(s.id, yyyyMm))),
+    ]);
+    let grandTotal = 0;
+    const rows = dutyStaff.map((s, i) => {
+      const auto = counts[i].length;
+      const ov = overrides[i];
+      const used = ov != null ? ov : auto;
+      const rate = shiftRate(s.salary);
+      const amount = used * rate;
+      grandTotal += amount;
+      return `<tr>
+        <td style="text-align:left;">${escapeHtml(s.name)}<br><span style="font-size:11px;color:var(--ink-soft);">${escapeHtml(s.empId)} · ${escapeHtml(s.groupName)}</span></td>
+        <td><input type="number" class="comp-salary-input" data-staff="${s.id}" value="${s.salary || ""}" placeholder="0" style="width:100px;"></td>
+        <td>${fmtBaht(rate)}</td>
+        <td>${auto}</td>
+        <td><input type="number" class="comp-override-input" data-staff="${s.id}" value="${ov != null ? ov : ""}" placeholder="${auto}" style="width:70px;" title="เว้นว่าง = ใช้จำนวนที่นับอัตโนมัติ"></td>
+        <td style="font-weight:700;">${fmtBaht(amount)}</td>
+      </tr>`;
+    }).join("");
+    box.innerHTML = `<table>
+      <thead><tr><th style="text-align:left;">ชื่อ-สกุล</th><th>เงินเดือน (บาท)</th><th>อัตรา/กะ (บาท)</th><th>จำนวนเวร (อัตโนมัติ)</th><th>จำนวนเวรที่ใช้คิด</th><th>รวมเงิน (บาท)</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="font-weight:700;"><td colspan="5" style="text-align:right;">รวมทั้งหมด</td><td>${fmtBaht(grandTotal)}</td></tr></tfoot>
+    </table>`;
+    box.querySelectorAll(".comp-salary-input").forEach((inp) => {
+      inp.onchange = async () => { await updateStaffField(inp.dataset.staff, "salary", Number(inp.value) || 0); renderComp(); };
+    });
+    box.querySelectorAll(".comp-override-input").forEach((inp) => {
+      inp.onchange = async () => {
+        const v = inp.value.trim();
+        await setCompOverride(inp.dataset.staff, yyyyMm, v === "" ? null : Number(v));
+        renderComp();
+      };
+    });
+    return;
+  }
+
+  // พนักงานทั่วไป: เห็น/แก้ได้เฉพาะของตัวเอง และต้องเป็นพนักงานอยู่เวร 3 ชุดเท่านั้น
+  box.style.opacity = "";
+  if (!currentStaffProfile) { box.innerHTML = `<div class="empty-hint">บัญชีนี้ยังไม่ได้ผูกกับรายชื่อพนักงาน</div>`; return; }
+  const group = allGroups.find((g) => g.id === currentStaffProfile.groupId);
+  if (!isDutyRosterGroup(group || {})) { box.innerHTML = `<div class="empty-hint">เมนูนี้ใช้สำหรับพนักงานอยู่เวร 3 ชุดเท่านั้น</div>`; return; }
+  const ownList = await getStaffByGroup(currentStaffProfile.groupId);
+  const own = ownList.find((s) => s.id === currentStaffProfile.id) || currentStaffProfile;
+  const [shifts, ov] = await Promise.all([getShiftsOfStaff(own.id, [yyyyMm]), getCompOverride(own.id, yyyyMm)]);
+  const auto = shifts.length;
+  const used = ov != null ? ov : auto;
+  const rate = shiftRate(own.salary);
+  const amount = used * rate;
+  box.innerHTML = `<div class="panel" style="max-width:420px;">
+    <div class="field"><label>เงินเดือน (บาท)</label><input type="number" id="myCompSalaryInput" value="${own.salary || ""}" placeholder="0"></div>
+    <p>อัตราค่าตอบแทน/กะ: <b>${fmtBaht(rate)}</b> บาท</p>
+    <p>จำนวนเวรเดือนนี้: <b>${auto}</b> เวร${ov != null ? ` (ผู้ดูแลค่าตอบแทนปรับเป็น ${ov} เวร)` : ""}</p>
+    <p style="font-size:16px;">รวมค่าตอบแทน: <b>${fmtBaht(amount)}</b> บาท</p>
+  </div>`;
+  document.getElementById("myCompSalaryInput").onchange = async (e) => {
+    await updateStaffField(own.id, "salary", Number(e.target.value) || 0);
+    renderComp();
+  };
+}
+
+async function buildAndPrintCompForm() {
+  const yyyyMm = document.getElementById("compMonthInput").value || currentYyyyMm();
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const buddhistYear = y + 543;
+  const monthName = THAI_MONTHS[m - 1];
+  const numDays = daysInMonth(yyyyMm);
+  if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
+
+  const dutyStaff = await getAllDutyStaffWithGroup();
+  if (!dutyStaff.length) { alert("ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวรเลย ไม่สามารถสร้างแบบฟอร์มได้"); return; }
+  if (!allGroups.length) allGroups = await getGroups();
+  const dutyGroups = allGroups.filter(isDutyRosterGroup);
+  const [assignByGroup, settings, overrides] = await Promise.all([
+    Promise.all(dutyGroups.map(async (g) => [g.id, (await loadSchedule(g.id, yyyyMm)) || {}])).then(Object.fromEntries),
+    getCompSettings(),
+    Promise.all(dutyStaff.map((s) => getCompOverride(s.id, yyyyMm))),
+  ]);
+  const today = new Date();
+  const printDateThai = `${today.getDate()} ${THAI_MONTHS[today.getMonth()]} ${today.getFullYear() + 543}`;
+
+  document.getElementById("printFormArea").innerHTML = buildCompPrintPage(dutyStaff, overrides, assignByGroup, y, m, buddhistYear, monthName, numDays, settings, printDateThai);
+  document.body.classList.add("printing-form");
+  setTimeout(() => window.print(), 50);
+}
+document.getElementById("printCompBtn").onclick = buildAndPrintCompForm;
+
+function buildCompPrintPage(dutyStaff, overrides, assignByGroup, y, m, buddhistYear, monthName, numDays, s, printDateThai) {
+  const nameRow = `<tr><th rowspan="3" style="width:5%;">วันที่</th><th rowspan="3" style="width:4%;">วัน</th>` +
+    dutyStaff.map((st) => `<th colspan="3">${escapeHtml(st.name)}</th>`).join("") + `</tr>`;
+  const empIdRow = `<tr>` + dutyStaff.map((st) => `<th colspan="3">${escapeHtml(st.empId)}</th>`).join("") + `</tr>`;
+  const subHeadRow = `<tr>` + dutyStaff.map(() => `<th>ช่วง1</th><th>ช่วง2</th><th>ช่วง3</th>`).join("") + `</tr>`;
+
+  const totals = {}; dutyStaff.forEach((st) => totals[st.id] = [0, 0, 0]);
+  let bodyRows = "";
+  for (let d = 1; d <= numDays; d++) {
+    const dateObj = new Date(y, m - 1, d);
+    const dow = dateObj.getDay();
+    const iso = todayISO(y, m, d);
+    const isHoliday = !!holidaysMap[iso];
+    const isSun = dow === 0, isSat = dow === 6;
+    const rowClasses = [(isHoliday ? "pf-holiday" : ""), ((isSun || isSat) && !isHoliday ? "pf-weekend" : ""), (isSun ? "pf-sun" : "")].filter(Boolean).join(" ");
+    const active = (isSun || isSat || isHoliday) ? [0, 1, 2] : [0, 2];
+    bodyRows += `<tr class="${rowClasses}"><td>${d}</td><td>${THAI_DOW[dow]}</td>`;
+    dutyStaff.forEach((st) => {
+      for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
+        // เช็คทุกกลุ่มอยู่เวร เผื่อเวรนี้ได้มาจากการแลกเวรข้ามชุด
+        const isMe = active.includes(shiftIdx) && Object.values(assignByGroup).some((a) => (a[String(d)] || [])[shiftIdx] === st.id);
+        if (isMe) totals[st.id][shiftIdx]++;
+        bodyRows += `<td class="${isMe ? "assigned" : ""}">${isMe ? "X" : ""}</td>`;
+      }
+    });
+    bodyRows += "</tr>";
+  }
+
+  let totalRow = `<tr class="pf-total-row"><td colspan="2">รวมเวร</td>`;
+  let grandRow = `<tr class="pf-total-row"><td colspan="2">รวมเงิน (บาท)</td>`;
+  let grandSum = 0;
+  dutyStaff.forEach((st, i) => {
+    const t = totals[st.id];
+    const auto = t[0] + t[1] + t[2];
+    const used = overrides[i] != null ? overrides[i] : auto;
+    const amount = used * shiftRate(st.salary);
+    grandSum += amount;
+    totalRow += `<td>${t[0]}</td><td>${t[1]}</td><td>${t[2]}</td>`;
+    grandRow += `<td colspan="3">${fmtBaht(amount)}${overrides[i] != null ? ` (ปรับเป็น ${overrides[i]} เวร)` : ""}</td>`;
+  });
+  totalRow += "</tr>"; grandRow += "</tr>";
+
+  return `
+  <div class="print-page">
+    <div class="pf-header">
+      <div class="pf-logo"><img src="data:image/png;base64,${PEA_LOGO_BASE64}" alt="PEA" style="width:100%;height:100%;object-fit:contain;"></div>
+      <div>
+        <p class="pf-org-th">การไฟฟ้าส่วนภูมิภาค</p>
+        <p class="pf-org-en">PROVINCIAL ELECTRICITY AUTHORITY</p>
+      </div>
+    </div>
+    <table class="pf-meta-table">
+      <tr><td class="pf-meta-label">จาก</td><td>${s.from}</td><td class="pf-meta-label" style="width:60px;">ถึง</td><td>${s.to}</td></tr>
+      <tr><td class="pf-meta-label">เลขที่</td><td></td><td class="pf-meta-label">วันที่</td><td>${printDateThai}</td></tr>
+      <tr><td class="pf-meta-label">เรื่อง</td><td colspan="3">${s.subject} ประจำเดือน ${monthName} ${buddhistYear}</td></tr>
+      <tr><td class="pf-meta-label">เรียน</td><td colspan="3">${s.addressee}</td></tr>
+      <tr><td></td><td colspan="3">${s.body} ของ ${s.officeLine || ""} ประจำเดือน ${monthName} พ.ศ.${buddhistYear} ดังนี้</td></tr>
+    </table>
+    <table class="official-table">
+      ${nameRow}${empIdRow}${subHeadRow}${bodyRows}${totalRow}${grandRow}
+    </table>
+    <div style="font-size:11px;margin-top:6px;display:flex;gap:18px;flex-wrap:wrap;">
+      <span>ช่วง 1 (8 ชม.) เวลา 00.30-08.30 น.</span>
+      <span>ช่วง 2 (8 ชม.) เวลา 08.30-16.30 น.</span>
+      <span>ช่วง 3 (8 ชม.) เวลา 16.30-00.30 น.</span>
+    </div>
+    <p style="margin-top:4px;font-weight:700;">รวมค่าตอบแทนทั้งหมด ${fmtBaht(grandSum)} บาท</p>
+    <div class="pf-footer">
+      <div class="pf-col">
+        <div class="pf-sign-space"></div>
+        <div>${escapeHtml(s.signerName || "")}</div>
+        <div>${escapeHtml(s.signerTitle || "")}</div>
+        <div>ผู้ขออนุมัติ</div>
+      </div>
+      <div class="pf-col">
+        <div class="pf-sign-space"></div>
+        <div>${escapeHtml(s.managerName || "")}</div>
+        <div>${escapeHtml(s.managerTitle || "")}</div>
+        <div>ผู้อนุมัติ</div>
+      </div>
+    </div>
   </div>`;
 }
 
