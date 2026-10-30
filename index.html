@@ -2850,7 +2850,7 @@ function buildCompPrintPage(group, staffList, overrideMap, assignByGroup, y, m, 
       <tr><td class="pf-meta-label">เลขที่</td><td></td><td class="pf-meta-label">วันที่</td><td>${printDateThai}</td></tr>
       <tr><td class="pf-meta-label">เรื่อง</td><td colspan="3">${s.subject} ประจำเดือน ${monthName} ${buddhistYear}</td></tr>
       <tr><td class="pf-meta-label">เรียน</td><td colspan="3">${s.addressee}</td></tr>
-      <tr><td></td><td colspan="3">${s.body} ของ ${s.officeLine || ""} ประจำเดือน ${monthName} พ.ศ.${buddhistYear} ดังนี้ — ${escapeHtml(group.name)}</td></tr>
+      <tr><td></td><td colspan="3">${s.body} ของ ${s.officeLine || ""} ประจำเดือน ${monthName} พ.ศ.${buddhistYear} ดังนี้</td></tr>
     </table>
     <table class="official-table">
       ${nameRow}${empIdRow}${subHeadRow}${bodyRows}${totalRow}${grandRow}
@@ -2860,7 +2860,6 @@ function buildCompPrintPage(group, staffList, overrideMap, assignByGroup, y, m, 
       <span>ช่วง 2 (8 ชม.) เวลา 08.30-16.30 น.</span>
       <span>ช่วง 3 (8 ชม.) เวลา 16.30-00.30 น.</span>
     </div>
-    <p style="margin-top:4px;font-weight:700;">รวมค่าตอบแทน ${escapeHtml(group.name)}: ${fmtBaht(pageSum)} บาท</p>
     ${isLastPage ? `
     <p style="margin-top:4px;font-weight:700;">รวมค่าตอบแทนทั้งหมดทุกชุด: ${fmtBaht(overallGrandSum)} บาท</p>
     <div class="pf-footer">
