@@ -478,6 +478,7 @@ body.printing-form #printFormArea{display:block;}
   body.printing-form{margin:0;padding:0;}
 }
 </style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -829,6 +830,19 @@ body.printing-form #printFormArea{display:block;}
     <section class="view" id="view-myschedule">
       <div class="page-head"><div><h2>ตารางเวรของฉัน</h2><p>รายการเวรที่คุณได้รับมอบหมาย</p></div></div>
       <div class="panel"><div class="field" style="max-width:220px;"><label>เดือน</label><input type="month" id="myScheduleMonthInput"></div></div>
+      <div class="panel" id="gcalPanel">
+        <div class="row-flex" style="align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+          <div style="min-width:220px;">
+            <b>เชื่อมต่อ Google ปฏิทิน</b>
+            <p class="auth-sub" id="gcalStatusText" style="margin:4px 0 0;">ยังไม่ได้เชื่อมต่อ — เชื่อมแล้วกดซิงค์เพื่อนำเวรของคุณไปลงปฏิทิน Google (ต้องเปิดหน้านี้และกดซิงค์เอง ระบบไม่ได้อัปเดตพื้นหลังให้ตลอดเวลา)</p>
+          </div>
+          <div class="row-flex" style="gap:8px;">
+            <button class="btn btn-primary" id="gcalConnectBtn" style="width:auto;">เชื่อมต่อ Google ปฏิทิน</button>
+            <button class="btn btn-ghost hidden" id="gcalSyncBtn" style="width:auto;">🔄 ซิงค์เดือนนี้</button>
+            <button class="btn btn-ghost hidden" id="gcalDisconnectBtn" style="width:auto;">ยกเลิกการเชื่อมต่อ</button>
+          </div>
+        </div>
+      </div>
       <div class="panel scroll-x"><div id="myScheduleBox" class="empty-hint">เลือกเดือนเพื่อดูตารางเวร</div></div>
     </section>
 
@@ -1480,6 +1494,7 @@ async function handleAuthUser(user) {
   if (currentRole === "admin" || currentRole === "payroll") await populateCompSettingsForm();
   if (currentRole === "admin") await populatePrintSettingsForm();
   refreshSwapBadge();
+  initGcalUi();
 }
 
 async function populatePrintSettingsForm() {
@@ -2322,6 +2337,7 @@ async function submitSwapRequest({ type, mine, target, theirs, reason }) {
   } catch (e) { alert("ส่งคำขอไม่สำเร็จ: " + friendlyError(e)); return false; }
 }
 async function renderMySchedule() {
+  if (document.getElementById("gcalConnectBtn")) updateGcalButtons();
   const box = document.getElementById("myScheduleBox");
   if (!currentStaffProfile) { box.innerHTML = `<div class="empty-hint">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อแอดมิน</div>`; return; }
   const yyyyMm = document.getElementById("myScheduleMonthInput").value || currentYyyyMm();
@@ -2344,6 +2360,152 @@ async function renderMySchedule() {
   if (!rows) { box.innerHTML = `<div class="empty-hint">ยังไม่มีเวรของคุณในเดือนนี้</div>`; return; }
   box.innerHTML = `<p style="margin-bottom:10px;color:var(--ink-soft);font-size:13px;">กลุ่ม: ${escapeHtml(currentStaffProfile.groupName)} · รวม ${myShifts.length} เวรในเดือนนี้ (รวมผลการแลกเวรแล้ว)</p>
     ${isMobileView() ? rows : `<table><thead><tr><th>วันที่</th><th>วัน</th><th style="text-align:left;">ช่วงเวรที่ได้รับมอบหมาย</th></tr></thead><tbody>${rows}</tbody></table>`}`;
+}
+
+// ==========================================================================
+// 13.5) เชื่อมต่อ Google ปฏิทิน — ซิงค์เวรของตัวเองไปลง Google Calendar
+// ใช้ Google Identity Services (OAuth2 token flow แบบฝั่ง client ล้วน ไม่มี backend เก็บ refresh token)
+// ข้อจำกัด: โทเคนอยู่ได้ประมาณ 1 ชม. และหายเมื่อปิดแท็บ/รีเฟรช ต้องกดเชื่อมต่อ/ซิงค์เองทุกครั้งที่เข้ามาใช้งานใหม่
+// ==========================================================================
+const GOOGLE_CLIENT_ID = "170306762465-u578h4iljjj2o2k8og5v2og9mdo7r4tg.apps.googleusercontent.com";
+const GCAL_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+// ช่วงเวลาเวรจริง (ตรงกับที่ใช้ในแบบฟอร์มเบิกค่าตอบแทน)
+const SHIFT_TIMES = [["00:30", "08:30"], ["08:30", "16:30"], ["16:30", "00:30"]];
+let gcalTokenClient = null;
+let gcalAccessToken = null; // เก็บในหน่วยความจำเท่านั้น ไม่ persist ข้ามการโหลดหน้า (ไม่มี refresh token ใน flow นี้)
+
+function gcalConnectedKey() { return "gcalConnected_" + (currentUid || ""); }
+function isGcalConnected() { return localStorage.getItem(gcalConnectedKey()) === "1"; }
+function setGcalConnected(v) {
+  if (v) localStorage.setItem(gcalConnectedKey(), "1");
+  else localStorage.removeItem(gcalConnectedKey());
+}
+
+function initGcalUi() {
+  if (!document.getElementById("gcalConnectBtn")) return;
+  updateGcalButtons();
+}
+function updateGcalButtons(statusText) {
+  const connected = isGcalConnected();
+  document.getElementById("gcalConnectBtn").classList.toggle("hidden", connected);
+  document.getElementById("gcalSyncBtn").classList.toggle("hidden", !connected);
+  document.getElementById("gcalDisconnectBtn").classList.toggle("hidden", !connected);
+  document.getElementById("gcalStatusText").textContent = statusText || (connected
+    ? "เชื่อมต่อแล้ว — กด \"ซิงค์เดือนนี้\" เพื่อนำเวรของคุณไปลง Google ปฏิทิน (ต้องกดทุกครั้งที่เข้ามาใหม่ ระบบไม่อัปเดตพื้นหลังให้อัตโนมัติ)"
+    : "ยังไม่ได้เชื่อมต่อ — เชื่อมแล้วกดซิงค์เพื่อนำเวรของคุณไปลงปฏิทิน Google (ต้องเปิดหน้านี้และกดซิงค์เอง ระบบไม่ได้อัปเดตพื้นหลังให้ตลอดเวลา)");
+}
+
+function ensureGcalTokenClient() {
+  if (gcalTokenClient) return gcalTokenClient;
+  if (!window.google || !google.accounts || !google.accounts.oauth2) throw new Error("โหลดระบบเชื่อมต่อ Google ไม่สำเร็จ ลองรีเฟรชหน้านี้แล้วลองใหม่");
+  gcalTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: GCAL_SCOPE,
+    callback: () => {}, // ถูกแทนที่ทุกครั้งที่เรียกขอโทเคน ดู requestGcalToken()
+  });
+  return gcalTokenClient;
+}
+function requestGcalToken(promptMode) {
+  return new Promise((resolve, reject) => {
+    let client;
+    try { client = ensureGcalTokenClient(); } catch (e) { reject(e); return; }
+    client.callback = (resp) => {
+      if (resp && resp.access_token) { gcalAccessToken = resp.access_token; resolve(resp.access_token); }
+      else reject(new Error(resp && resp.error ? resp.error : "ขอสิทธิ์เข้าถึงปฏิทินไม่สำเร็จ"));
+    };
+    client.error_callback = (err) => reject(new Error((err && err.type) || "ขอสิทธิ์เข้าถึงปฏิทินไม่สำเร็จ หรือถูกยกเลิก"));
+    client.requestAccessToken({ prompt: promptMode === undefined ? "" : promptMode });
+  });
+}
+
+document.getElementById("gcalConnectBtn").onclick = async () => {
+  const btn = document.getElementById("gcalConnectBtn");
+  btn.disabled = true;
+  try {
+    await requestGcalToken("consent");
+    setGcalConnected(true);
+    updateGcalButtons();
+    await syncMyShiftsToGoogleCalendar();
+  } catch (e) {
+    alert("เชื่อมต่อ Google ปฏิทินไม่สำเร็จ: " + friendlyError(e));
+  } finally { btn.disabled = false; }
+};
+document.getElementById("gcalDisconnectBtn").onclick = () => {
+  if (gcalAccessToken) { try { google.accounts.oauth2.revoke(gcalAccessToken, () => {}); } catch (e) {} }
+  gcalAccessToken = null;
+  setGcalConnected(false);
+  updateGcalButtons();
+};
+document.getElementById("gcalSyncBtn").onclick = async () => {
+  const btn = document.getElementById("gcalSyncBtn");
+  btn.disabled = true;
+  try { await syncMyShiftsToGoogleCalendar(); }
+  catch (e) { alert("ซิงค์ปฏิทินไม่สำเร็จ: " + friendlyError(e)); }
+  finally { btn.disabled = false; }
+};
+
+// คำนวณวันที่/เวลาเริ่ม-จบของกะเป็น ISO ที่มี offset +07:00 (เวลาไทย) — กะ3 (16:30-00:30) ข้ามเที่ยงคืนไปวันถัดไป
+function shiftDateTimeRange(y, m, d, shiftIdx) {
+  const [startHm, endHm] = SHIFT_TIMES[shiftIdx] || SHIFT_TIMES[0];
+  const pad = (n) => String(n).padStart(2, "0");
+  const startStr = `${y}-${pad(m)}-${pad(d)}T${startHm}:00+07:00`;
+  let endY = y, endM = m, endD = d;
+  if (shiftIdx === 2) { const next = new Date(y, m - 1, d + 1); endY = next.getFullYear(); endM = next.getMonth() + 1; endD = next.getDate(); }
+  const endStr = `${endY}-${pad(endM)}-${pad(endD)}T${endHm}:00+07:00`;
+  return { start: startStr, end: endStr };
+}
+
+async function gcalApiFetch(url, opts) {
+  const res = await fetch(url, { ...opts, headers: { Authorization: "Bearer " + gcalAccessToken, "Content-Type": "application/json", ...(opts && opts.headers) } });
+  if (res.status === 401) { gcalAccessToken = null; throw new Error("โทเคนหมดอายุ กรุณาเชื่อมต่อใหม่อีกครั้ง"); }
+  if (!res.ok) { const t = await res.text().catch(() => ""); throw new Error("Google Calendar API error " + res.status + " " + t.slice(0, 200)); }
+  return res.status === 204 ? null : res.json();
+}
+
+// ซิงค์แบบ "ลบของเดือนนี้ที่เคยสร้างไว้ทั้งหมดแล้วสร้างใหม่ตามตารางปัจจุบัน" เพื่อความง่ายและชัวร์ว่าตรงกับตารางล่าสุดเสมอ
+// ใช้ extendedProperties.private เป็นแท็กเพื่อหาเฉพาะ event ที่แอปนี้สร้างไว้ (ไม่ไปยุ่งกับนัดหมายอื่นของผู้ใช้)
+async function syncMyShiftsToGoogleCalendar() {
+  if (!currentStaffProfile) { alert("ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ จึงยังซิงค์ปฏิทินไม่ได้"); return; }
+  if (!isGcalConnected()) return;
+  if (!gcalAccessToken) { await requestGcalToken(""); }
+  const yyyyMm = document.getElementById("myScheduleMonthInput").value || currentYyyyMm();
+  const [y, m] = yyyyMm.split("-").map(Number);
+  updateGcalButtons("กำลังซิงค์...");
+
+  // 1) หา event เดิมที่แอปนี้เคยสร้างไว้สำหรับเดือนนี้ของพนักงานคนนี้
+  const listUrl = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+    + "?privateExtendedProperty=" + encodeURIComponent("shiftAppStaff=" + currentStaffProfile.id)
+    + "&privateExtendedProperty=" + encodeURIComponent("shiftAppMonth=" + yyyyMm)
+    + "&maxResults=2500&showDeleted=false";
+  const existing = await gcalApiFetch(listUrl);
+  const existingIds = (existing && existing.items || []).map((ev) => ev.id);
+
+  // 2) ลบของเก่าทั้งหมดในเดือนนี้ก่อน (เผื่อมีกะที่ถูกแลกออกไปแล้ว)
+  for (const id of existingIds) {
+    await gcalApiFetch("https://www.googleapis.com/calendar/v3/calendars/primary/events/" + id, { method: "DELETE" }).catch(() => {});
+  }
+
+  // 3) ดึงเวรปัจจุบันของตัวเอง (รวมผลแลกเวรแล้ว) แล้วสร้าง event ใหม่ทั้งหมด
+  const myShifts = await getShiftsOfStaff(currentStaffProfile.id, [yyyyMm]);
+  let created = 0;
+  for (const sh of myShifts) {
+    const { start, end } = shiftDateTimeRange(y, m, sh.day, sh.shift);
+    const body = {
+      summary: `อยู่เวร ช่วง ${sh.shift + 1} (${sh.groupName})`,
+      description: "สร้างอัตโนมัติโดยระบบจัดเวร กฟภ.",
+      start: { dateTime: start, timeZone: "Asia/Bangkok" },
+      end: { dateTime: end, timeZone: "Asia/Bangkok" },
+      extendedProperties: { private: {
+        shiftAppSource: "peaShiftApp",
+        shiftAppStaff: currentStaffProfile.id,
+        shiftAppMonth: yyyyMm,
+        shiftAppId: `${currentStaffProfile.id}_${yyyyMm}_${sh.day}_${sh.shift}`,
+      } },
+    };
+    await gcalApiFetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", { method: "POST", body: JSON.stringify(body) });
+    created++;
+  }
+  updateGcalButtons(`ซิงค์ล่าสุด: นำเวร ${created} รายการของเดือน ${yyyyMm} ลงปฏิทิน Google แล้ว`);
 }
 
 // ==========================================================================
