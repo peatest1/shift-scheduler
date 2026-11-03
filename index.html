@@ -2373,6 +2373,7 @@ const GCAL_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const SHIFT_TIMES = [["00:30", "08:30"], ["08:30", "16:30"], ["16:30", "00:30"]];
 let gcalTokenClient = null;
 let gcalAccessToken = null; // เก็บในหน่วยความจำเท่านั้น ไม่ persist ข้ามการโหลดหน้า (ไม่มี refresh token ใน flow นี้)
+let gcalSyncRunning = false; // กันไม่ให้ซิงค์ซ้อนกัน (เช่น กดปุ่มซิงค์ระหว่างที่ตอนเชื่อมต่อกำลังซิงค์อัตโนมัติอยู่) ซึ่งเคยทำให้ได้ event ซ้ำ
 
 function gcalConnectedKey() { return "gcalConnected_" + (currentUid || ""); }
 function isGcalConnected() { return localStorage.getItem(gcalConnectedKey()) === "1"; }
@@ -2462,50 +2463,75 @@ async function gcalApiFetch(url, opts) {
   return res.status === 204 ? null : res.json();
 }
 
+// ชื่อ event ในปฏิทิน: ปกติ "เวร กะN" — ถ้าช่องนั้นในตารางต้นฉบับ (ฉบับเสนอลงนาม) เดิมเป็นคนอื่น
+// (ไม่ว่าจะแลกเวรกันมาหรือมาอยู่แทน) ให้ต่อท้ายเป็น "เวร กะN (แทน ชื่อเล่นเจ้าของเวรเดิม)"
+async function buildGcalEventTitle(sh, yyyyMm, origCache, staffCache) {
+  const base = `เวร กะ${sh.shift + 1}`;
+  if (!(sh.groupId in origCache)) origCache[sh.groupId] = await loadOriginalSchedule(sh.groupId, yyyyMm);
+  const orig = origCache[sh.groupId];
+  const origStaffId = orig && orig.assignments && orig.assignments[String(sh.day)] ? orig.assignments[String(sh.day)][sh.shift] : null;
+  if (!origStaffId || origStaffId === currentStaffProfile.id) return base;
+  if (!(sh.groupId in staffCache)) staffCache[sh.groupId] = await getStaffByGroup(sh.groupId);
+  const origStaff = staffCache[sh.groupId].find((s) => s.id === origStaffId);
+  if (!origStaff) return base;
+  return `${base} (แทน ${origStaff.nickname || origStaff.name})`;
+}
+
 // ซิงค์แบบ "ลบของเดือนนี้ที่เคยสร้างไว้ทั้งหมดแล้วสร้างใหม่ตามตารางปัจจุบัน" เพื่อความง่ายและชัวร์ว่าตรงกับตารางล่าสุดเสมอ
 // ใช้ extendedProperties.private เป็นแท็กเพื่อหาเฉพาะ event ที่แอปนี้สร้างไว้ (ไม่ไปยุ่งกับนัดหมายอื่นของผู้ใช้)
 async function syncMyShiftsToGoogleCalendar() {
   if (!currentStaffProfile) { alert("ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ จึงยังซิงค์ปฏิทินไม่ได้"); return; }
   if (!isGcalConnected()) return;
-  if (!gcalAccessToken) { await requestGcalToken(""); }
-  const yyyyMm = document.getElementById("myScheduleMonthInput").value || currentYyyyMm();
-  const [y, m] = yyyyMm.split("-").map(Number);
-  updateGcalButtons("กำลังซิงค์...");
+  if (gcalSyncRunning) return; // กันซิงค์ซ้อน (เช่น กดปุ่มซิงค์ระหว่างที่การเชื่อมต่อกำลังซิงค์อัตโนมัติอยู่) ไม่งั้นจะได้ event ซ้ำ
+  gcalSyncRunning = true;
+  const syncBtn = document.getElementById("gcalSyncBtn");
+  if (syncBtn) syncBtn.disabled = true;
+  try {
+    if (!gcalAccessToken) { await requestGcalToken(""); }
+    const yyyyMm = document.getElementById("myScheduleMonthInput").value || currentYyyyMm();
+    const [y, m] = yyyyMm.split("-").map(Number);
+    updateGcalButtons("กำลังซิงค์...");
 
-  // 1) หา event เดิมที่แอปนี้เคยสร้างไว้สำหรับเดือนนี้ของพนักงานคนนี้
-  const listUrl = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
-    + "?privateExtendedProperty=" + encodeURIComponent("shiftAppStaff=" + currentStaffProfile.id)
-    + "&privateExtendedProperty=" + encodeURIComponent("shiftAppMonth=" + yyyyMm)
-    + "&maxResults=2500&showDeleted=false";
-  const existing = await gcalApiFetch(listUrl);
-  const existingIds = (existing && existing.items || []).map((ev) => ev.id);
+    // 1) หา event เดิมที่แอปนี้เคยสร้างไว้สำหรับเดือนนี้ของพนักงานคนนี้
+    const listUrl = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+      + "?privateExtendedProperty=" + encodeURIComponent("shiftAppStaff=" + currentStaffProfile.id)
+      + "&privateExtendedProperty=" + encodeURIComponent("shiftAppMonth=" + yyyyMm)
+      + "&maxResults=2500&showDeleted=false";
+    const existing = await gcalApiFetch(listUrl);
+    const existingIds = (existing && existing.items || []).map((ev) => ev.id);
 
-  // 2) ลบของเก่าทั้งหมดในเดือนนี้ก่อน (เผื่อมีกะที่ถูกแลกออกไปแล้ว)
-  for (const id of existingIds) {
-    await gcalApiFetch("https://www.googleapis.com/calendar/v3/calendars/primary/events/" + id, { method: "DELETE" }).catch(() => {});
+    // 2) ลบของเก่าทั้งหมดในเดือนนี้ก่อน (เผื่อมีกะที่ถูกแลกออกไปแล้ว)
+    for (const id of existingIds) {
+      await gcalApiFetch("https://www.googleapis.com/calendar/v3/calendars/primary/events/" + id, { method: "DELETE" }).catch(() => {});
+    }
+
+    // 3) ดึงเวรปัจจุบันของตัวเอง (รวมผลแลกเวรแล้ว) แล้วสร้าง event ใหม่ทั้งหมด
+    const myShifts = await getShiftsOfStaff(currentStaffProfile.id, [yyyyMm]);
+    const origCache = {}, staffCache = {};
+    let created = 0;
+    for (const sh of myShifts) {
+      const { start, end } = shiftDateTimeRange(y, m, sh.day, sh.shift);
+      const title = await buildGcalEventTitle(sh, yyyyMm, origCache, staffCache);
+      const body = {
+        summary: title,
+        description: `กลุ่ม: ${sh.groupName}\nสร้างอัตโนมัติโดยระบบจัดเวร กฟภ.`,
+        start: { dateTime: start, timeZone: "Asia/Bangkok" },
+        end: { dateTime: end, timeZone: "Asia/Bangkok" },
+        extendedProperties: { private: {
+          shiftAppSource: "peaShiftApp",
+          shiftAppStaff: currentStaffProfile.id,
+          shiftAppMonth: yyyyMm,
+          shiftAppId: `${currentStaffProfile.id}_${yyyyMm}_${sh.day}_${sh.shift}`,
+        } },
+      };
+      await gcalApiFetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", { method: "POST", body: JSON.stringify(body) });
+      created++;
+    }
+    updateGcalButtons(`ซิงค์ล่าสุด: นำเวร ${created} รายการของเดือน ${yyyyMm} ลงปฏิทิน Google แล้ว`);
+  } finally {
+    gcalSyncRunning = false;
+    if (syncBtn) syncBtn.disabled = false;
   }
-
-  // 3) ดึงเวรปัจจุบันของตัวเอง (รวมผลแลกเวรแล้ว) แล้วสร้าง event ใหม่ทั้งหมด
-  const myShifts = await getShiftsOfStaff(currentStaffProfile.id, [yyyyMm]);
-  let created = 0;
-  for (const sh of myShifts) {
-    const { start, end } = shiftDateTimeRange(y, m, sh.day, sh.shift);
-    const body = {
-      summary: `อยู่เวร ช่วง ${sh.shift + 1} (${sh.groupName})`,
-      description: "สร้างอัตโนมัติโดยระบบจัดเวร กฟภ.",
-      start: { dateTime: start, timeZone: "Asia/Bangkok" },
-      end: { dateTime: end, timeZone: "Asia/Bangkok" },
-      extendedProperties: { private: {
-        shiftAppSource: "peaShiftApp",
-        shiftAppStaff: currentStaffProfile.id,
-        shiftAppMonth: yyyyMm,
-        shiftAppId: `${currentStaffProfile.id}_${yyyyMm}_${sh.day}_${sh.shift}`,
-      } },
-    };
-    await gcalApiFetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", { method: "POST", body: JSON.stringify(body) });
-    created++;
-  }
-  updateGcalButtons(`ซิงค์ล่าสุด: นำเวร ${created} รายการของเดือน ${yyyyMm} ลงปฏิทิน Google แล้ว`);
 }
 
 // ==========================================================================
