@@ -2049,14 +2049,25 @@ async function renderScheduleGrid() {
   box.querySelectorAll(".cell-toggle").forEach((btn) => {
     btn.onclick = async () => {
       const day = btn.dataset.day, shiftIdx = Number(btn.dataset.shift), staffId = btn.dataset.staff;
+      const current = (await loadSchedule(activeScheduleGroupId, yyyyMm)) || {};
+      const daySlots = current[day] ? [...current[day]] : [null, null, null];
+      const occupantId = daySlots[shiftIdx];
+      const willAssign = occupantId !== staffId; // true = กำลังจะ "ติ๊ก" ให้คนนี้, false = กำลังถอดคนนี้ออก (ช่องนี้เดิมเป็นของเขาอยู่แล้ว)
+      // ช่องนี้ (วัน+ช่วง ของชุดนี้) มีได้แค่ "1 คน" เท่านั้น — ถ้ากำลังจะติ๊กให้คนใหม่ทับคนที่อยู่เดิมอยู่แล้ว (คนละคนกัน)
+      // ต้องเตือนให้ชัดว่าชื่อเดิมจะหายไปจากช่องนี้ ไม่งั้นแอดมินจะไม่รู้ตัวว่าไปทับชื่อคนอื่น (เช่นกดให้ "ภาษร" ทับช่องที่ "ปัญญา" อยู่เดิม)
+      const occupant = willAssign && occupantId ? staffList.find((s) => s.id === occupantId) : null;
+      const me = staffList.find((s) => s.id === staffId);
+      let warnMsg = "";
       // เดือนนี้เคยบันทึก "ฉบับเสนอลงนาม" แล้ว (มักแปลว่ามีการแลกเวรที่อนุมัติแล้วเกิดขึ้น) — ถ้าจิ้มแก้ช่องตรงๆ แบบนี้
       // จะไปทับผลที่แลกเวรไว้โดยไม่รู้ตัว จึงต้องเตือนยืนยันก่อนเหมือนตอนกด "สุ่มหมุนเวร"
       if (await loadOriginalSchedule(activeScheduleGroupId, yyyyMm)) {
-        if (!confirm("⚠️ เดือนนี้บันทึกฉบับเสนอลงนามไปแล้ว และอาจมีการแลกเวรที่อนุมัติแล้ว การแก้ไขช่องนี้ตรงๆ อาจเปลี่ยนแปลงผลที่แลกเวรไว้ (ฉบับเสนอลงนามยังอยู่เหมือนเดิม)\n\nยืนยันจะแก้ไขช่องนี้หรือไม่?")) return;
+        warnMsg += "⚠️ เดือนนี้บันทึกฉบับเสนอลงนามไปแล้ว และอาจมีการแลกเวรที่อนุมัติแล้ว การแก้ไขช่องนี้ตรงๆ อาจเปลี่ยนแปลงผลที่แลกเวรไว้ (ฉบับเสนอลงนามยังอยู่เหมือนเดิม)\n\n";
       }
-      const current = (await loadSchedule(activeScheduleGroupId, yyyyMm)) || {};
-      const daySlots = current[day] ? [...current[day]] : [null, null, null];
-      daySlots[shiftIdx] = daySlots[shiftIdx] === staffId ? null : staffId;
+      if (occupant) {
+        warnMsg += `⚠️ ช่องนี้ (วันที่${day} ${isDispatchGroup(group) ? "กะ" : "ช่วง"}${shiftIdx + 1}) ตอนนี้เป็นเวรของ "${escapeHtml(staffDisplayName(occupant))}" อยู่ — ถ้ายืนยัน จะเปลี่ยนเป็น "${escapeHtml(staffDisplayName(me))}" แทน (ชื่อเดิมจะหายไปจากช่องนี้ เพราะ 1 ช่องมีได้แค่ 1 คน)\n\n`;
+      }
+      if (warnMsg && !confirm(warnMsg + "ยืนยันจะแก้ไขช่องนี้หรือไม่?")) return;
+      daySlots[shiftIdx] = willAssign ? staffId : null;
       current[day] = daySlots;
       await saveSchedule(activeScheduleGroupId, yyyyMm, current);
       renderScheduleGrid();
