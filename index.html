@@ -824,7 +824,8 @@ body.printing-form #printFormArea{display:block;}
           <span><span class="swatch" style="background:#D9EAF5;"></span>เสาร์-อาทิตย์</span>
           <span><span class="swatch" style="background:#FFD98A;"></span>วันหยุด</span>
           <span><span class="swatch" style="background:#fff;box-shadow:inset 0 0 0 2px #D97706;"></span>ต่างจากฉบับเสนอลงนาม</span>
-          <span><span class="swatch" style="background:#FDE7C8;"></span>คนจากชุดอื่นที่มาแลกเวร</span>
+          <span><span class="swatch" style="background:#FDE7C8;"></span>→ชื่อ = คนจากชุดอื่นมาอยู่แทนช่องนี้ (แลกเวร)</span>
+          <span><span class="swatch" style="background:transparent;border:2px dashed var(--teal-900);"></span>X ชุดN = ไปอยู่เวรในตารางชุดอื่น (แลกเวร)</span>
           <span>· = ช่วงที่ไม่ต้องจัดเวร</span>
           <span title="แต่ละช่วงในแต่ละวันมีได้คนเดียว คลิกคนใหม่จะแทนที่คนเดิม — ชุดพนักงานอยู่เวร วันธรรมดาเปิดช่วง1/ช่วง3 ส่วนเสาร์-อาทิตย์/วันหยุดเปิดครบ 3 ช่วง">ⓘ คลิกช่องเพื่อใส่/เอา X ออก</span>
         </div>
@@ -1990,6 +1991,21 @@ async function renderScheduleGrid() {
   // หน้าจัดตารางเวร (สำหรับแก้ไข) แสดงเฉพาะพนักงานของชุดนี้เท่านั้น ไม่ดึงคนจากชุดอื่นที่แลกเวรเข้ามาแสดงเป็นคอลัมน์เพิ่ม (ดูเยอะเกินไป)
   // คนที่แลกเวรเข้ามายังมีผลในตารางจริง เพียงแต่แก้ไข/ดูช่องของเขาได้จากชุดต้นสังกัดของเขาเอง หรือดูสรุปได้ที่ปฏิทินเวร/ฟอร์มพิมพ์
   const staffList = ownStaff;
+  // ---- เวรข้ามชุดจากการแลกเวร ----
+  // (1) "แขก": ช่องของชุดนี้ที่ตอนนี้เป็นของคนชุดอื่น — ไม่มีคอลัมน์ให้เขา จึงแสดง "→ชื่อเล่น" ไว้ที่ช่องของเจ้าของเดิม (ตามฉบับเสนอลงนาม)
+  // (2) "ไปอยู่ชุดอื่น": คนในชุดนี้ที่ไปอยู่เวรในช่องของชุดอื่น — แสดง X แบบเส้นประพร้อมชื่อชุด (กดแก้ที่นี่ไม่ได้ ต้องแก้ที่หน้าชุดนั้น)
+  const ownIds = new Set(ownStaff.map((s) => s.id));
+  const allStaffAll = await getAllStaff();
+  const nickOf = (id) => { const st = allStaffAll.find((x) => x.id === id); return st ? ((st.nickname && st.nickname.trim()) || st.name) : "ไม่พบชื่อ"; };
+  const shortGroup = (g) => { const mm = /ชุดที่\s*(\d+)/.exec(g.name || ""); return mm ? "ชุด" + mm[1] : (g.name || "ชุดอื่น"); };
+  const awayMap = {}; // `${day}_${shift}_${staffId}` -> group
+  if (isDutyRosterGroup(group)) {
+    const others = allGroups.filter((g) => g.id !== activeScheduleGroupId && isDutyRosterGroup(g));
+    const scheds = await Promise.all(others.map((g) => loadSchedule(g.id, yyyyMm)));
+    others.forEach((g, gi) => Object.entries(scheds[gi] || {}).forEach(([day, slots]) => (slots || []).forEach((id, sh) => {
+      if (id && ownIds.has(id)) awayMap[`${day}_${sh}_${id}`] = g;
+    })));
+  }
   const numDays = daysInMonth(yyyyMm);
   const [y, m] = yyyyMm.split("-").map(Number);
   const isDuty = isDutyRosterGroup(group);
@@ -2032,6 +2048,13 @@ async function renderScheduleGrid() {
       : Array.from({ length: fixedSlots }, (_, i) => i);
     const daySlots = assignments[String(d)] || [null, null, null];
     const origSlots = origAssign ? (origAssign[String(d)] || [null, null, null]) : null;
+    // ช่องที่คนชุดอื่นมาอยู่แทน: แสดงไว้ที่คอลัมน์ของเจ้าของเดิม ถ้าไม่รู้เจ้าของเดิม ใช้คอลัมน์แรก
+    const guestHost = {};
+    daySlots.forEach((occ, sh) => {
+      if (!occ || ownIds.has(occ)) return;
+      const orig = origSlots && origSlots[sh];
+      guestHost[sh] = orig && ownIds.has(orig) ? orig : staffList[0].id;
+    });
 
     body += `<tr class="${rowClass}"><td class="sticky-col">${d}</td><td class="sticky-col sticky-col2">${THAI_DOW[dow]}${isHoliday ? " •" : ""}</td>`;
     staffList.forEach((s, i) => {
@@ -2046,9 +2069,19 @@ async function renderScheduleGrid() {
         // ไม่เอามาใช้กับพนักงานอยู่เวรชุดที่ 1-3 (กลุ่มเหล่านี้นับเต็มทุกกะที่อยู่จริง)
         const isDoubleDuty = isDispatchGroup(group) && shiftIdx === 2 && isMe && daySlots[0] === s.id;
         if (isMe) perStaffShiftTotal[s.id][shiftIdx] += isDoubleDuty ? 0.5 : 1;
-        if (!active) {
+        const awayGroup = !isMe ? awayMap[`${d}_${shiftIdx}_${s.id}`] : null;
+        const guestId = guestHost[shiftIdx] === s.id && !isMe ? daySlots[shiftIdx] : null;
+        if (awayGroup) {
+          perStaffShiftTotal[s.id][shiftIdx] += 1;
+          body += `<td class="${band}${borderClass}"><span title="อยู่เวรในตารางของ ${escapeHtml(awayGroup.name)} (จากการแลกเวร) — แก้ไขได้ที่หน้า ${escapeHtml(awayGroup.name)}" style="display:block;width:100%;box-sizing:border-box;border:2px dashed var(--teal-900);border-radius:8px;padding:2px 0;font-weight:700;color:var(--teal-900);line-height:1.1;">X<br><span style="font-size:10px;font-weight:400;">${escapeHtml(shortGroup(awayGroup))}</span></span></td>`;
+        } else if (!active) {
           body += `<td class="${band}${borderClass}" style="color:#C7C2B4;">·</td>`;
         } else {
+          if (guestId) {
+            body += `<td class="${band}${borderClass}"><button class="mini-btn cell-toggle" style="width:100%;background:#FDE7C8;border-color:#D97706;color:#92400E;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px;padding-right:2px;"
+              data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}" title="ช่องนี้ตอนนี้เป็นเวรของ ${escapeHtml(nickOf(guestId))} (คนชุดอื่น) จากการแลกเวร">→${escapeHtml(nickOf(guestId))}</button></td>`;
+            continue;
+          }
           body += `<td class="${band}${borderClass}"><button class="mini-btn cell-toggle" style="width:100%;${isDoubleDuty ? "background:#FDE7C8;border-color:#D97706;color:#92400E;font-weight:700;" : (isMe ? "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;" : "")}"
             data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}" title="${isDoubleDuty ? "อยู่เวรกะ1และกะ3 วันเดียวกัน (นับ 1.5)" : ""}">${isDoubleDuty ? "1.5" : (isMe ? "X" : "")}</button></td>`;
         }
@@ -2082,7 +2115,7 @@ async function renderScheduleGrid() {
       const willAssign = occupantId !== staffId; // true = กำลังจะ "ติ๊ก" ให้คนนี้, false = กำลังถอดคนนี้ออก (ช่องนี้เดิมเป็นของเขาอยู่แล้ว)
       // ช่องนี้ (วัน+ช่วง ของชุดนี้) มีได้แค่ "1 คน" เท่านั้น — ถ้ากำลังจะติ๊กให้คนใหม่ทับคนที่อยู่เดิมอยู่แล้ว (คนละคนกัน)
       // ต้องเตือนให้ชัดว่าชื่อเดิมจะหายไปจากช่องนี้ ไม่งั้นแอดมินจะไม่รู้ตัวว่าไปทับชื่อคนอื่น (เช่นกดให้ "ภาษร" ทับช่องที่ "ปัญญา" อยู่เดิม)
-      const occupant = willAssign && occupantId ? staffList.find((s) => s.id === occupantId) : null;
+      const occupant = willAssign && occupantId ? (allStaffAll.find((s) => s.id === occupantId) || { name: "(ไม่พบชื่อ — พนักงานถูกลบถาวรแล้ว)" }) : null;
       const me = staffList.find((s) => s.id === staffId);
       let warnMsg = "";
       // เดือนนี้เคยบันทึก "ฉบับเสนอลงนาม" แล้ว (มักแปลว่ามีการแลกเวรที่อนุมัติแล้วเกิดขึ้น) — ถ้าจิ้มแก้ช่องตรงๆ แบบนี้
