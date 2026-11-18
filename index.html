@@ -831,8 +831,8 @@ body.printing-form #printFormArea{display:block;}
           <span><span class="swatch" style="background:#D9EAF5;"></span>เสาร์-อาทิตย์</span>
           <span><span class="swatch" style="background:#FFD98A;"></span>วันหยุด</span>
           <span><span class="swatch" style="background:#fff;box-shadow:inset 0 0 0 2px #D97706;"></span>ต่างจากฉบับเสนอลงนาม</span>
-          <span><span class="swatch" style="background:#FDE7C8;"></span>→ชื่อ = คนจากชุดอื่นมาอยู่แทนช่องนี้ (แลกเวร)</span>
-          <span>X<span style="color:#D97706;">⇄</span> = แลกไปอยู่เวรในตารางชุดอื่น (แก้ได้ที่หน้าชุดนั้น)</span>
+          <span><span class="swatch" style="background:#FDE7C8;"></span>→ชื่อ = เวรเดิมของคนนี้ ตอนนี้คนนั้นมาอยู่แทน (แลกเวร)</span>
+          <span>X<span style="color:#D97706;">⇄</span> = เวรที่ได้มาจากการแลก (ถ้าเป็นช่องของชุดอื่น แก้ได้ที่หน้าชุดนั้น)</span>
           <span>· = ช่วงที่ไม่ต้องจัดเวร</span>
           <span title="แต่ละช่วงในแต่ละวันมีได้คนเดียว คลิกคนใหม่จะแทนที่คนเดิม — ชุดพนักงานอยู่เวร วันธรรมดาเปิดช่วง1/ช่วง3 ส่วนเสาร์-อาทิตย์/วันหยุดเปิดครบ 3 ช่วง">ⓘ คลิกช่องเพื่อใส่/เอา X ออก</span>
         </div>
@@ -2057,10 +2057,13 @@ async function renderScheduleGrid() {
     const origSlots = origAssign ? (origAssign[String(d)] || [null, null, null]) : null;
     // ช่องที่คนชุดอื่นมาอยู่แทน: แสดงไว้ที่คอลัมน์ของเจ้าของเดิม ถ้าไม่รู้เจ้าของเดิม ใช้คอลัมน์แรก
     const guestHost = {};
+    // ช่องที่ "ตอนนี้" เป็นคนละคนกับฉบับเสนอลงนาม (แลกเวร ทั้งในชุดเดียวกันและข้ามชุด): ช่องของเจ้าของเดิมแสดง "→ชื่อคนที่มาแทน"
+    // ถ้าเป็นคนชุดอื่นแต่ไม่รู้เจ้าของเดิม (ยังไม่มีฉบับเสนอลงนาม) ใช้คอลัมน์แรกแทน เพื่อไม่ให้ชื่อหายไปจากหน้านี้
     daySlots.forEach((occ, sh) => {
-      if (!occ || ownIds.has(occ)) return;
+      if (!occ) return;
       const orig = origSlots && origSlots[sh];
-      guestHost[sh] = orig && ownIds.has(orig) ? orig : staffList[0].id;
+      if (orig && orig !== occ && ownIds.has(orig)) guestHost[sh] = orig;
+      else if (!ownIds.has(occ)) guestHost[sh] = staffList[0].id;
     });
 
     body += `<tr class="${rowClass}"><td class="sticky-col">${d}</td><td class="sticky-col sticky-col2">${THAI_DOW[dow]}${isHoliday ? " •" : ""}</td>`;
@@ -2080,17 +2083,20 @@ async function renderScheduleGrid() {
         const guestId = guestHost[shiftIdx] === s.id && !isMe ? daySlots[shiftIdx] : null;
         if (awayGroup) {
           perStaffShiftTotal[s.id][shiftIdx] += 1;
-          body += `<td class="${band}${borderClass}"><span title="อยู่เวรในตารางของ ${escapeHtml(awayGroup.name)} (จากการแลกเวร) — แก้ไขได้ที่หน้า ${escapeHtml(awayGroup.name)}" style="display:block;width:100%;box-sizing:border-box;background:var(--teal-900);color:#fff;border:1px solid var(--teal-900);border-radius:8px;padding:2px 0;line-height:1.3;font-weight:700;cursor:default;">X<span style="font-size:11px;font-weight:400;color:#F5C26B;margin-left:2px;">⇄</span></span></td>`;
+          body += `<td class="${band}${borderClass}${changed ? "" : " changed"}"><span title="อยู่เวรในตารางของ ${escapeHtml(awayGroup.name)} (จากการแลกเวร) — แก้ไขได้ที่หน้า ${escapeHtml(awayGroup.name)}" style="display:block;width:100%;box-sizing:border-box;background:var(--teal-900);color:#fff;border:1px solid var(--teal-900);border-radius:8px;padding:2px 0;line-height:1.3;font-weight:700;cursor:default;">X<span style="font-size:11px;font-weight:400;color:#F5C26B;margin-left:2px;">⇄</span></span></td>`;
         } else if (!active) {
           body += `<td class="${band}${borderClass}" style="color:#C7C2B4;">·</td>`;
         } else {
           if (guestId) {
             body += `<td class="${band}${borderClass}"><button class="mini-btn cell-toggle" style="width:100%;background:#FDE7C8;border-color:#D97706;color:#92400E;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px;padding-right:2px;"
-              data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}" title="ช่องนี้ตอนนี้เป็นเวรของ ${escapeHtml(nickOf(guestId))} (คนชุดอื่น) จากการแลกเวร">→${escapeHtml(nickOf(guestId))}</button></td>`;
+              data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}" title="ช่องนี้ตอนนี้เป็นเวรของ ${escapeHtml(nickOf(guestId))} จากการแลกเวร">→${escapeHtml(nickOf(guestId))}</button></td>`;
             continue;
           }
+          // ได้เวรนี้มาจากการแลก (ไม่ใช่ของเขาตามฉบับเสนอลงนาม) → X⇄ เหมือนกับเวรที่แลกไปอยู่ชุดอื่น
+          const swappedIn = isMe && origSlots && origSlots[shiftIdx] !== s.id;
+          const swapMark = swappedIn ? `<span style="font-size:11px;font-weight:400;color:${isDoubleDuty ? "#D97706" : "#F5C26B"};margin-left:2px;">⇄</span>` : "";
           body += `<td class="${band}${borderClass}"><button class="mini-btn cell-toggle" style="width:100%;${isDoubleDuty ? "background:#FDE7C8;border-color:#D97706;color:#92400E;font-weight:700;" : (isMe ? "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;" : "")}"
-            data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}" title="${isDoubleDuty ? "อยู่เวรกะ1และกะ3 วันเดียวกัน (นับ 1.5)" : ""}">${isDoubleDuty ? "1.5" : (isMe ? "X" : "")}</button></td>`;
+            data-day="${d}" data-shift="${shiftIdx}" data-staff="${s.id}" title="${isDoubleDuty ? "อยู่เวรกะ1และกะ3 วันเดียวกัน (นับ 1.5)" : (swappedIn ? "ได้เวรนี้มาจากการแลกเวร" : "")}">${isDoubleDuty ? "1.5" : (isMe ? "X" : "")}${swapMark}</button></td>`;
         }
       }
     });
