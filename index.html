@@ -2949,9 +2949,176 @@ async function getCompOverride(staffId, yyyyMm) {
   } catch (e) { return null; }
 }
 async function setCompOverride(staffId, yyyyMm, value) {
-  const id = `${staffId}_${yyyyMm}`;
-  if (value === null) { await deleteDoc(doc(db, "compAdjust", id)).catch(() => {}); }
-  else { await setDoc(doc(db, "compAdjust", id), { overrideShifts: value, updatedAt: Date.now() }); }
+  // ใช้ merge เพราะเอกสารเดียวกันเก็บ "วันอยู่เวรจริงที่แก้ไขเอง" (cellAdds/cellRemoves) ไว้ด้วย ห้ามลบ/เขียนทับทั้งเอกสาร
+  await setDoc(doc(db, "compAdjust", `${staffId}_${yyyyMm}`), { overrideShifts: value, updatedAt: Date.now() }, { merge: true });
+}
+// ---- วันอยู่เวรจริง (แก้ไขเองโดยผู้คิดค่าตอบแทน) ----
+// ใช้คิดค่าตอบแทนเท่านั้น ไม่กระทบตารางเวร/ปฏิทิน/ฟอร์มตารางเวร: เก็บเป็นส่วนต่างจากตารางเวร
+// cellAdds = ช่องที่ "อยู่จริง" แต่ไม่มีในตาราง, cellRemoves = ช่องที่มีในตารางแต่ "ไม่ได้อยู่จริง" (key = "วัน_ช่วง" เช่น "8_1")
+async function loadCompCells(staffIds, yyyyMm) {
+  const out = {};
+  await Promise.all(staffIds.map(async (id) => {
+    let d = {};
+    try { const snap = await getDoc(doc(db, "compAdjust", `${id}_${yyyyMm}`)); if (snap.exists()) d = snap.data(); } catch (e) {}
+    out[id] = { adds: new Set(d.cellAdds || []), removes: new Set(d.cellRemoves || []) };
+  }));
+  return out;
+}
+async function saveCompCells(staffId, yyyyMm, adds, removes) {
+  await setDoc(doc(db, "compAdjust", `${staffId}_${yyyyMm}`), { cellAdds: [...adds], cellRemoves: [...removes], updatedAt: Date.now() }, { merge: true });
+}
+function compActiveShifts(y, m, d) {
+  const dow = new Date(y, m - 1, d).getDay();
+  return (dow === 0 || dow === 6 || !!holidaysMap[todayISO(y, m, d)]) ? [0, 1, 2] : [0, 2];
+}
+// สถานะช่องของคนหนึ่ง: "sched" = ตามตาราง, "added" = เพิ่มเอง, "removed" = ตัดออกเอง, null = ไม่ได้อยู่
+function compCellState(staffId, y, m, d, shiftIdx, assignByGroup, cells) {
+  const k = `${d}_${shiftIdx}`, c = cells && cells[staffId];
+  const inSched = compActiveShifts(y, m, d).includes(shiftIdx) && Object.values(assignByGroup).some((a) => (a[String(d)] || [])[shiftIdx] === staffId);
+  if (inSched) return c && c.removes.has(k) ? "removed" : "sched";
+  return c && c.adds.has(k) ? "added" : null;
+}
+function compCountFor(staffId, y, m, numDays, assignByGroup, cells) {
+  let n = 0;
+  for (let d = 1; d <= numDays; d++) for (let sh = 0; sh < 3; sh++) {
+    const st = compCellState(staffId, y, m, d, sh, assignByGroup, cells);
+    if (st === "sched" || st === "added") n++;
+  }
+  return n;
+}
+async function loadCompMonth(yyyyMm, staffIds) {
+  if (!allGroups.length) allGroups = await getGroups();
+  if (!Object.keys(holidaysMap).length) { const list = await getAllHolidays(); list.forEach((h) => holidaysMap[h.date] = h.name); }
+  const dutyGroups = allGroups.filter(isDutyRosterGroup);
+  const [assignByGroup, cells] = await Promise.all([
+    Promise.all(dutyGroups.map(async (g) => [g.id, (await loadSchedule(g.id, yyyyMm)) || {}])).then(Object.fromEntries),
+    loadCompCells(staffIds, yyyyMm),
+  ]);
+  return { assignByGroup, cells };
+}
+
+// หน้าต่างแก้ "วันอยู่เวรจริง" ของพนักงาน 1 คน (ผู้คิดค่าตอบแทน/แอดมิน)
+async function openCompCellsModal(st, yyyyMm) {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const numDays = daysInMonth(yyyyMm);
+  const allSt = await getAllStaff();
+  const dutyStaff = await getAllDutyStaffWithGroup();
+  const { assignByGroup, cells } = await loadCompMonth(yyyyMm, dutyStaff.map((x) => x.id));
+  // work = สำเนาที่แก้ได้ของทุกคน (ตอนย้ายเวรมาแทน อาจต้องตัดเวรของคนอื่นด้วย) — snapshot ไว้ใช้ "ล้างการแก้ไข"
+  const cloneCells = (c) => Object.fromEntries(Object.entries(c).map(([id, v]) => [id, { adds: new Set(v.adds), removes: new Set(v.removes) }]));
+  const snapshot = cloneCells(cells);
+  let work = cloneCells(cells);
+  const dirty = new Set([st.id]);
+  const removedOthers = []; // [{id, d, sh}] ไว้แสดงว่าตัดใครออกไปบ้าง
+  // 1 กะมีผู้ปฏิบัติงานได้ตามจำนวนชุดอยู่เวร (ชุดละ 1 คน = ปกติ 3 คน)
+  const maxPerShift = allGroups.filter(isDutyRosterGroup).length || 3;
+  const othersOn = (d, sh) => dutyStaff.filter((x) => x.id !== st.id && ["sched", "added"].includes(compCellState(x.id, y, m, d, sh, assignByGroup, work)));
+  const nick = (id) => { const x = allSt.find((q) => q.id === id); return x ? ((x.nickname && x.nickname.trim()) || x.name) : ""; };
+  const ownSched = assignByGroup[st.groupId] || {};
+  const wrap = document.createElement("div");
+  wrap.className = "modal-overlay"; wrap.id = "calSwapModal";
+  wrap.innerHTML = `<div class="modal-box" style="max-width:520px;">
+    <h3 style="margin-top:0;">วันอยู่เวรจริง: ${escapeHtml(staffDisplayName(st))}</h3>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 8px;">เดือน ${THAI_MONTHS[m - 1]} ${y + 543} · กดช่องเพื่อเพิ่ม/ตัดเวร ใช้คิดค่าตอบแทนเท่านั้น ไม่เปลี่ยนตารางเวร<br>
+      <b style="color:var(--teal-900);">X</b> = ตามตาราง · <b style="color:#B45309;">X+</b> = เพิ่มเอง · <s style="color:#B23B3B;">X</s> = ตัดออก (ไม่ได้อยู่จริง) · ชื่อจาง = คนที่อยู่ในตารางช่องนั้น</p>
+    <div id="compCellsGrid" style="max-height:55vh;overflow:auto;border:1px solid var(--line);border-radius:6px;"></div>
+    <p id="compCellsCount" style="margin:8px 0 0;font-weight:600;"></p>
+    <div id="compCellsOthers" style="font-size:12.5px;color:#B23B3B;margin-top:4px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="compCellsReset" style="width:auto;margin-right:auto;">ล้างการแก้ไข</button>
+      <button class="btn btn-ghost" id="calModalCancel" style="width:auto;">ยกเลิก</button>
+      <button class="btn btn-primary" id="compCellsSave" style="width:auto;">บันทึก</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const draw = () => {
+    let h = `<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="position:sticky;top:0;background:#fff;"><th style="padding:4px;">วันที่</th><th>ช่วง1</th><th>ช่วง2</th><th>ช่วง3</th></tr></thead><tbody>`;
+    for (let d = 1; d <= numDays; d++) {
+      const dow = new Date(y, m - 1, d).getDay();
+      const act = compActiveShifts(y, m, d);
+      const hol = !!holidaysMap[todayISO(y, m, d)];
+      h += `<tr style="border-top:1px solid var(--line);${(dow === 0 || dow === 6 || hol) ? "background:#EEF3F8;" : ""}"><td style="padding:3px 6px;white-space:nowrap;">${d} ${THAI_DOW[dow]}${hol ? " •" : ""}</td>`;
+      for (let sh = 0; sh < 3; sh++) {
+        if (!act.includes(sh)) { h += `<td style="text-align:center;color:#C7C2B4;">·</td>`; continue; }
+        const state = compCellState(st.id, y, m, d, sh, assignByGroup, work);
+        const occ = (ownSched[String(d)] || [])[sh];
+        let label = "", style = "";
+        if (state === "sched") { label = "X"; style = "background:var(--teal-900);color:#fff;border-color:var(--teal-900);font-weight:700;"; }
+        else if (state === "added") { label = "X+"; style = "background:#FDE7C8;color:#92400E;border-color:#D97706;font-weight:700;"; }
+        else if (state === "removed") { label = "<s>X</s>"; style = "background:#FBEAEA;color:#B23B3B;border-color:#E8B4B4;"; }
+        else if (occ && occ !== st.id) { label = `<span style="color:#A8A296;font-size:11px;">${escapeHtml(nick(occ))}</span>`; }
+        h += `<td style="padding:2px;"><button class="mini-btn comp-cell" data-d="${d}" data-s="${sh}" style="width:100%;min-height:28px;${style}">${label}</button></td>`;
+      }
+      h += "</tr>";
+    }
+    h += "</tbody></table>";
+    const grid = document.getElementById("compCellsGrid");
+    const keep = grid.scrollTop;
+    grid.innerHTML = h; grid.scrollTop = keep;
+    const n = compCountFor(st.id, y, m, numDays, assignByGroup, work);
+    const base = compCountFor(st.id, y, m, numDays, assignByGroup, {});
+    const me = work[st.id];
+    document.getElementById("compCellsCount").textContent = `รวมอยู่เวรจริง ${n} เวร` + (n !== base || me.adds.size || me.removes.size ? ` (ตามตาราง ${base} เวร)` : "");
+    const stillRemoved = removedOthers.filter((r) => compCellState(r.id, y, m, r.d, r.sh, assignByGroup, work) !== "sched" && compCellState(r.id, y, m, r.d, r.sh, assignByGroup, work) !== "added");
+    document.getElementById("compCellsOthers").innerHTML = stillRemoved.length
+      ? "จะตัดเวรของคนอื่นออกด้วยเมื่อกดบันทึก:<br>" + stillRemoved.map((r) => `· ${escapeHtml(staffDisplayName(dutyStaff.find((x) => x.id === r.id)))} — วันที่ ${r.d} ช่วง${r.sh + 1}`).join("<br>") : "";
+    grid.querySelectorAll(".comp-cell").forEach((b) => {
+      b.onclick = async () => {
+        const d = Number(b.dataset.d), sh = Number(b.dataset.s);
+        const k = `${d}_${sh}`;
+        const me = work[st.id];
+        const state = compCellState(st.id, y, m, d, sh, assignByGroup, work);
+        if (state === "sched") { me.removes.add(k); draw(); return; }
+        if (state === "added") { me.adds.delete(k); draw(); return; }
+        // กำลังจะทำให้คนนี้ "อยู่" ในกะนี้ (เพิ่มใหม่ หรือคืนเวรที่ตัดไว้) — 1 กะมีได้ไม่เกิน maxPerShift คน
+        // ถ้าเต็มแล้ว ต้องเลือกว่าจะตัดใครออก 1 คน (ล็อกไว้ ไม่ให้เกิน)
+        const others = othersOn(d, sh);
+        if (others.length >= maxPerShift) {
+          const victim = await pickCompVictim(d, sh, others);
+          if (!victim) return;
+          const vs = compCellState(victim.id, y, m, d, sh, assignByGroup, work);
+          if (!work[victim.id]) work[victim.id] = { adds: new Set(), removes: new Set() };
+          if (vs === "sched") work[victim.id].removes.add(k); else work[victim.id].adds.delete(k);
+          dirty.add(victim.id);
+          removedOthers.push({ id: victim.id, d, sh });
+        }
+        if (state === "removed") me.removes.delete(k); else me.adds.add(k);
+        draw();
+      };
+    });
+  };
+  // เลือกคนที่จะตัดออกจากกะที่เต็มแล้ว (คืนค่า staff หรือ null ถ้ายกเลิก)
+  const pickCompVictim = (d, sh, others) => new Promise((resolve) => {
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "compPickModal"; ov.style.zIndex = "110";
+    ov.innerHTML = `<div class="modal-box" style="max-width:420px;">
+      <h3 style="margin-top:0;">⚠️ กะนี้ครบ ${maxPerShift} คนแล้ว</h3>
+      <p style="margin:0 0 10px;">วันที่ ${d} ช่วง${sh + 1} มีผู้ปฏิบัติงานครบ ${maxPerShift} คนแล้ว ถ้าจะให้ <b>${escapeHtml(staffDisplayName(st))}</b> อยู่กะนี้ ต้องเลือกตัดออก 1 คน:</p>
+      ${others.map((x) => `<button class="btn btn-ghost comp-victim" data-id="${x.id}" style="display:block;width:100%;margin-bottom:6px;text-align:left;">ตัด ${escapeHtml(staffDisplayName(x))} <span style="color:var(--ink-soft);font-size:12px;">· ${escapeHtml(x.groupName || "")}</span></button>`).join("")}
+      <div class="modal-actions"><button class="btn btn-ghost" id="compPickCancel" style="width:auto;">ยกเลิก</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+    const done = (v) => { ov.remove(); resolve(v); };
+    ov.querySelectorAll(".comp-victim").forEach((bt) => bt.onclick = () => done(others.find((x) => x.id === bt.dataset.id)));
+    document.getElementById("compPickCancel").onclick = () => done(null);
+  });
+  draw();
+  document.getElementById("compCellsReset").onclick = () => {
+    // คืนทุกคนกลับเป็นตามที่บันทึกไว้ แล้วล้างการแก้ไขของคนนี้ทั้งหมด (กลับเป็นตามตาราง)
+    work = cloneCells(snapshot);
+    work[st.id] = { adds: new Set(), removes: new Set() };
+    removedOthers.length = 0; dirty.clear(); dirty.add(st.id);
+    draw();
+  };
+  document.getElementById("calModalCancel").onclick = () => closeModal();
+  document.getElementById("compCellsSave").onclick = async () => {
+    const btn = document.getElementById("compCellsSave"); btn.disabled = true;
+    try {
+      for (const id of dirty) await saveCompCells(id, yyyyMm, work[id].adds, work[id].removes);
+      closeModal(); renderComp();
+    }
+    catch (e) { alert("บันทึกไม่สำเร็จ: " + (e.message || e)); btn.disabled = false; }
+  };
 }
 
 async function renderComp() {
@@ -2964,13 +3131,17 @@ async function renderComp() {
     const dutyStaff = await getAllDutyStaffWithGroup();
     box.style.opacity = "";
     if (!dutyStaff.length) { box.innerHTML = `<div class="empty-hint">ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวรเลย</div>`; return; }
-    const [counts, overrides] = await Promise.all([
-      Promise.all(dutyStaff.map((s) => getShiftsOfStaff(s.id, [yyyyMm]))),
+    const [cy, cm] = yyyyMm.split("-").map(Number);
+    const cDays = daysInMonth(yyyyMm);
+    const [monthData, overrides] = await Promise.all([
+      loadCompMonth(yyyyMm, dutyStaff.map((s) => s.id)),
       Promise.all(dutyStaff.map((s) => getCompOverride(s.id, yyyyMm))),
     ]);
     let grandTotal = 0;
     const rows = dutyStaff.map((s, i) => {
-      const auto = counts[i].length;
+      const auto = compCountFor(s.id, cy, cm, cDays, monthData.assignByGroup, monthData.cells);
+      const cc = monthData.cells[s.id];
+      const edited = cc && (cc.adds.size || cc.removes.size);
       const ov = overrides[i];
       const used = ov != null ? ov : auto;
       const rate = shiftRate(s.salary);
@@ -2980,18 +3151,22 @@ async function renderComp() {
         <td style="text-align:left;">${escapeHtml(s.name)}<br><span style="font-size:11px;color:var(--ink-soft);">${escapeHtml(s.empId)} · ${escapeHtml(s.groupName)}</span></td>
         <td><input type="number" class="comp-salary-input" data-staff="${s.id}" value="${s.salary || ""}" placeholder="0" style="width:100px;"></td>
         <td>${fmtBaht(rate)}</td>
-        <td>${auto}</td>
+        <td>${auto}${edited ? `<br><span style="font-size:11px;color:#B45309;">แก้วันเองแล้ว</span>` : ""}</td>
+        <td><button class="mini-btn comp-cells-btn" data-staff="${s.id}" style="white-space:nowrap;">📝 แก้วัน</button></td>
         <td><input type="number" class="comp-override-input" data-staff="${s.id}" value="${ov != null ? ov : ""}" placeholder="${auto}" style="width:70px;" title="เว้นว่าง = ใช้จำนวนที่นับอัตโนมัติ"></td>
         <td style="font-weight:700;">${fmtBaht(amount)}</td>
       </tr>`;
     }).join("");
     box.innerHTML = `<table>
-      <thead><tr><th style="text-align:left;">ชื่อ-สกุล</th><th>เงินเดือน (บาท)</th><th>อัตรา/กะ (บาท)</th><th>จำนวนเวร (อัตโนมัติ)</th><th>จำนวนเวรที่ใช้คิด</th><th>รวมเงิน (บาท)</th></tr></thead>
+      <thead><tr><th style="text-align:left;">ชื่อ-สกุล</th><th>เงินเดือน (บาท)</th><th>อัตรา/กะ (บาท)</th><th>จำนวนเวร (อยู่จริง)</th><th>วันอยู่เวรจริง</th><th>จำนวนเวรที่ใช้คิด</th><th>รวมเงิน (บาท)</th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr style="font-weight:700;"><td colspan="5" style="text-align:right;">รวมทั้งหมด</td><td>${fmtBaht(grandTotal)}</td></tr></tfoot>
+      <tfoot><tr style="font-weight:700;"><td colspan="6" style="text-align:right;">รวมทั้งหมด</td><td>${fmtBaht(grandTotal)}</td></tr></tfoot>
     </table>`;
     box.querySelectorAll(".comp-salary-input").forEach((inp) => {
       inp.onchange = async () => { await updateStaffField(inp.dataset.staff, "salary", Number(inp.value) || 0); renderComp(); };
+    });
+    box.querySelectorAll(".comp-cells-btn").forEach((b) => {
+      b.onclick = () => openCompCellsModal(dutyStaff.find((x) => x.id === b.dataset.staff), yyyyMm);
     });
     box.querySelectorAll(".comp-override-input").forEach((inp) => {
       inp.onchange = async () => {
@@ -3010,8 +3185,9 @@ async function renderComp() {
   if (!isDutyRosterGroup(group || {})) { box.innerHTML = `<div class="empty-hint">เมนูนี้ใช้สำหรับพนักงานอยู่เวร 3 ชุดเท่านั้น</div>`; return; }
   const ownList = await getStaffByGroup(currentStaffProfile.groupId);
   const own = ownList.find((s) => s.id === currentStaffProfile.id) || currentStaffProfile;
-  const [shifts, ov] = await Promise.all([getShiftsOfStaff(own.id, [yyyyMm]), getCompOverride(own.id, yyyyMm)]);
-  const auto = shifts.length;
+  const [oy, om] = yyyyMm.split("-").map(Number);
+  const [md, ov] = await Promise.all([loadCompMonth(yyyyMm, [own.id]), getCompOverride(own.id, yyyyMm)]);
+  const auto = compCountFor(own.id, oy, om, daysInMonth(yyyyMm), md.assignByGroup, md.cells);
   const used = ov != null ? ov : auto;
   const rate = shiftRate(own.salary);
   const amount = used * rate;
@@ -3045,9 +3221,10 @@ async function buildAndPrintCompForm() {
   ]);
   const dutyStaff = groupStaffLists.flat();
   if (!dutyStaff.length) { alert("ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวรเลย ไม่สามารถสร้างแบบฟอร์มได้"); return; }
-  const [assignByGroup, overrideList] = await Promise.all([
+  const [assignByGroup, overrideList, compCells] = await Promise.all([
     Promise.all(dutyGroups.map(async (g) => [g.id, (await loadSchedule(g.id, yyyyMm)) || {}])).then(Object.fromEntries),
     Promise.all(dutyStaff.map((st) => getCompOverride(st.id, yyyyMm))),
+    loadCompCells(dutyStaff.map((st) => st.id), yyyyMm),
   ]);
   const overrideMap = {}; dutyStaff.forEach((st, i) => overrideMap[st.id] = overrideList[i]);
   const today = new Date();
@@ -3057,16 +3234,7 @@ async function buildAndPrintCompForm() {
   let overallGrandSum = 0;
   dutyGroups.forEach((g, gi) => {
     groupStaffLists[gi].forEach((st) => {
-      let autoCount = 0;
-      for (let d = 1; d <= numDays; d++) {
-        const dateObj = new Date(y, m - 1, d);
-        const dow = dateObj.getDay();
-        const isHoliday = !!holidaysMap[todayISO(y, m, d)];
-        const active = (dow === 0 || dow === 6 || isHoliday) ? [0, 1, 2] : [0, 2];
-        for (const shiftIdx of active) {
-          if (Object.values(assignByGroup).some((a) => (a[String(d)] || [])[shiftIdx] === st.id)) autoCount++;
-        }
-      }
+      const autoCount = compCountFor(st.id, y, m, numDays, assignByGroup, compCells);
       const used = overrideMap[st.id] != null ? overrideMap[st.id] : autoCount;
       overallGrandSum += used * shiftRate(st.salary);
     });
@@ -3074,7 +3242,7 @@ async function buildAndPrintCompForm() {
 
   let pagesHtml = "";
   dutyGroups.forEach((g, gi) => {
-    pagesHtml += buildCompPrintPage(g, groupStaffLists[gi], overrideMap, assignByGroup, y, m, buddhistYear, monthName, numDays, settings, printDateThai, gi === dutyGroups.length - 1, overallGrandSum);
+    pagesHtml += buildCompPrintPage(g, groupStaffLists[gi], overrideMap, assignByGroup, compCells, y, m, buddhistYear, monthName, numDays, settings, printDateThai, gi === dutyGroups.length - 1, overallGrandSum);
   });
 
   document.getElementById("printFormArea").innerHTML = pagesHtml;
@@ -3084,7 +3252,7 @@ async function buildAndPrintCompForm() {
 document.getElementById("printCompBtn").onclick = buildAndPrintCompForm;
 
 // สร้าง 1 หน้าแยกต่อชุดอยู่เวร (เหมือนแบบฟอร์มจัดตารางเวรปกติ) — ยอดรวมเงินทั้งหมดทุกชุด + ลายเซ็น แสดงเฉพาะหน้าสุดท้าย
-function buildCompPrintPage(group, staffList, overrideMap, assignByGroup, y, m, buddhistYear, monthName, numDays, s, printDateThai, isLastPage, overallGrandSum) {
+function buildCompPrintPage(group, staffList, overrideMap, assignByGroup, compCells, y, m, buddhistYear, monthName, numDays, s, printDateThai, isLastPage, overallGrandSum) {
   const nameRow = `<tr><th rowspan="3" style="width:5.5%;" class="pf-pend">วันที่</th><th rowspan="3" style="width:4%;" class="pf-pend">วัน</th>` +
     staffList.map((st, i) => `<th colspan="3"${pfCls(i, null)}>${escapeHtml(st.name)}</th>`).join("") + `</tr>`;
   const empIdRow = `<tr>` + staffList.map((st, i) => `<th colspan="3"${pfCls(i, null)}>${escapeHtml(st.empId)}</th>`).join("") + `</tr>`;
@@ -3103,8 +3271,9 @@ function buildCompPrintPage(group, staffList, overrideMap, assignByGroup, y, m, 
     bodyRows += `<tr class="${rowClasses}"><td>${d}</td><td class="pf-pend">${THAI_DOW[dow]}</td>`;
     staffList.forEach((st, i) => {
       for (let shiftIdx = 0; shiftIdx < 3; shiftIdx++) {
-        // เช็คทุกกลุ่มอยู่เวร เผื่อเวรนี้ได้มาจากการแลกเวรข้ามชุด
-        const isMe = active.includes(shiftIdx) && Object.values(assignByGroup).some((a) => (a[String(d)] || [])[shiftIdx] === st.id);
+        // เช็คทุกกลุ่มอยู่เวร เผื่อเวรนี้ได้มาจากการแลกเวรข้ามชุด + วันอยู่เวรจริงที่ผู้คิดค่าตอบแทนแก้ไขเอง
+        const cs = compCellState(st.id, y, m, d, shiftIdx, assignByGroup, compCells);
+        const isMe = cs === "sched" || cs === "added";
         if (isMe) totals[st.id][shiftIdx]++;
         bodyRows += `<td${pfCls(i, shiftIdx, isMe ? "assigned" : "")}>${isMe ? "X" : ""}</td>`;
       }
