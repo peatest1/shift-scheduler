@@ -1155,7 +1155,15 @@ async function _getAllStaff() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 async function updateStaffField(staffId, field, value) { await updateDoc(doc(db, "staff", staffId), { [field]: value }); }
-async function removeStaff(staffId) { await deleteDoc(doc(db, "staff", staffId)); }
+// "ลบ" พนักงาน = ลบแบบซ่อน (soft delete) ไม่ได้ลบข้อมูลจริงออกจาก Firestore เพราะชื่อนี้อาจยังถูกอ้างอิงอยู่ในตารางเวร/
+// ประวัติแลกเวร/ค่าตอบแทนเดือนก่อนๆ ถ้าลบจริงชื่อจะหายกลายเป็น "?" ในที่เหล่านั้น — ซ่อนไว้แทนเพื่อให้ชื่อยังแสดงถูกต้องเสมอ
+// แต่จะไม่โผล่เป็นตัวเลือกให้สุ่มเวร/แลกเวร/ฝากเวรให้ใหม่อีก (ดู filterActiveStaff)
+async function removeStaff(staffId) { await updateDoc(doc(db, "staff", staffId), { deleted: true, deletedAt: Date.now() }); }
+async function restoreStaff(staffId) { await updateDoc(doc(db, "staff", staffId), { deleted: false, deletedAt: null }); }
+async function permanentlyDeleteStaff(staffId) { await deleteDoc(doc(db, "staff", staffId)); }
+// ใช้กรองเฉพาะพนักงานที่ยังใช้งานอยู่ (ไม่ถูกลบ) สำหรับจุดที่เป็น "ตัวเลือกสำหรับมอบหมายเวรใหม่" เท่านั้น
+// (หน้าแสดงผล เช่น ปฏิทิน/ตารางเวร/ฟอร์มพิมพ์/คำนวณค่าตอบแทน ต้องไม่กรอง เพื่อให้ยังแสดงชื่อคนที่ถูกลบไปแล้วถูกต้องในข้อมูลเก่า)
+function filterActiveStaff(list) { return list.filter((s) => !s.deleted); }
 async function moveStaff(groupId, staffId, direction) {
   const list = await getStaffByGroup(groupId);
   const idx = list.findIndex((s) => s.id === staffId);
@@ -1550,14 +1558,14 @@ async function renderOverview() {
   if (!allGroups.length) allGroups = await getGroups();
   let rows = "";
   for (const g of allGroups) {
-    const staff = await getStaffByGroup(g.id);
+    const staff = filterActiveStaff(await getStaffByGroup(g.id));
     const slotLabel = isDutyRosterGroup(g) ? "2-3 ช่วง/วัน (วันธรรมดา 2, วันหยุด/เสาร์-อาทิตย์ 3)" : `${g.slotsPerDay} ช่วง/วัน`;
     rows += `<tr><td class="name-cell">${g.name}</td><td>${staff.length} คน</td><td>${slotLabel}</td></tr>`;
   }
   if (isMobileView()) {
     let cards = "";
     for (const g of allGroups) {
-      const staff = await getStaffByGroup(g.id);
+      const staff = filterActiveStaff(await getStaffByGroup(g.id));
       const slotLabel = isDutyRosterGroup(g) ? "วันธรรมดา 2 ช่วง · เสาร์-อาทิตย์/วันหยุด 3 ช่วง" : `${g.slotsPerDay} ช่วง/วัน`;
       cards += `<div class="m-card"><div class="m-card-head"><strong class="m-title">${escapeHtml(g.name)}</strong><span class="tag">${staff.length} คน</span></div>
         <div class="m-row"><span class="m-label">ช่วงเวร/วัน</span><span>${slotLabel}</span></div></div>`;
@@ -1597,10 +1605,13 @@ async function renderStaffList() {
   if (!activeStaffGroupId) return;
   const g = allGroups.find((x) => x.id === activeStaffGroupId);
   const insp = isInspectorGroup(g);
-  const list = await getStaffByGroup(activeStaffGroupId);
-  if (!list.length) { box.innerHTML = `<div class="empty-hint">ยังไม่มีพนักงานในกลุ่มนี้</div>`; return; }
+  const fullList = await getStaffByGroup(activeStaffGroupId);
+  if (!fullList.length) { box.innerHTML = `<div class="empty-hint">ยังไม่มีพนักงานในกลุ่มนี้</div>`; return; }
+  const list = fullList.filter((s) => !s.deleted);
+  const deletedList = fullList.filter((s) => s.deleted);
   let html = "";
-  if (isMobileView()) {
+  if (!list.length) html += `<div class="empty-hint">ยังไม่มีพนักงานในกลุ่มนี้</div>`;
+  else if (isMobileView()) {
     html = list.map((s, idx) => `<div class="m-card">
       <div class="m-card-head"><span class="m-idx">${idx + 1}</span><strong class="m-title">${escapeHtml(s.name)}</strong>${s.linkedUid ? '<span class="tag">สมัครแล้ว</span>' : '<span class="tag" style="background:#F7E3DE;">ยังไม่สมัคร</span>'}</div>
       ${insp
@@ -1633,6 +1644,20 @@ async function renderStaffList() {
   });
   html += "</tbody></table>";
   }
+  // พนักงานที่ถูกลบไปแล้ว (ลบแบบซ่อน) — ยังเก็บไว้เพื่อให้ชื่อแสดงถูกต้องในตารางเวร/ประวัติเก่า แต่ไม่ใช้เป็นตัวเลือกใหม่แล้ว
+  // แสดงแยกส่วนไว้ท้ายสุด พร้อมปุ่ม "กู้คืน" และ "ลบถาวร" (กรณีลบผิดคน/อยากลบจริงๆ)
+  if (deletedList.length) {
+    html += `<details style="margin-top:14px;"><summary style="cursor:pointer;color:var(--muted);">พนักงานที่ลบแล้ว (${deletedList.length} คน)</summary>
+      <div style="margin-top:8px;">` +
+      deletedList.map((s) => `<div class="row-flex" data-deleted-row data-id="${s.id}" style="align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);color:var(--muted);">
+        <span style="text-decoration:line-through;">${escapeHtml(s.name)}${s.empId ? " · " + escapeHtml(String(s.empId)) : ""}</span>
+        <span class="row-flex" style="gap:6px;width:auto;">
+          <button class="mini-btn" data-act="restore" data-id="${s.id}">กู้คืน</button>
+          <button class="mini-btn mini-danger" data-act="purge" data-id="${s.id}">ลบถาวร</button>
+        </span>
+      </div>`).join("") +
+      `</div></details>`;
+  }
   box.innerHTML = html;
   box.querySelectorAll(".nickname-input").forEach((inp) => {
     inp.onchange = async () => { await updateStaffField(inp.dataset.id, "nickname", inp.value.trim()); };
@@ -1644,7 +1669,9 @@ async function renderStaffList() {
     btn.onclick = async () => {
       const id = btn.dataset.id, act = btn.dataset.act;
       if (act === "up" || act === "down") await moveStaff(activeStaffGroupId, id, act);
-      if (act === "del") { if (confirm("ยืนยันลบพนักงานคนนี้?")) await removeStaff(id); }
+      if (act === "del") { if (confirm('ยืนยันลบพนักงานคนนี้?\n\n(เป็นการ "ลบแบบซ่อน" ชื่อจะยังแสดงถูกต้องในตารางเวร/ประวัติเก่าที่เคยมีอยู่ แต่จะไม่ถูกเลือกให้เวรใหม่อีก — กู้คืนได้ภายหลังจากรายการ "พนักงานที่ลบแล้ว")')) await removeStaff(id); }
+      if (act === "restore") await restoreStaff(id);
+      if (act === "purge") { if (confirm("⚠️ ลบถาวร จะลบข้อมูลพนักงานคนนี้ออกจากระบบจริง กู้คืนไม่ได้อีก และชื่อในตารางเวร/ประวัติเก่าที่เคยมีจะกลายเป็น \"?\"\n\nยืนยันลบถาวรหรือไม่?")) await permanentlyDeleteStaff(id); }
       renderStaffList();
     };
   });
@@ -1748,7 +1775,7 @@ async function onScheduleTabSelect(groupId) {
   document.getElementById("printSettingsPanel").classList.toggle("hidden", isDisp || isInsp);
   if (isDisp && currentRole === "admin") populateDispatchSettingsForm();
   if (isInsp && currentRole === "admin") populateInspectorSettingsForm();
-  const staffList = await getStaffByGroup(groupId);
+  const staffList = filterActiveStaff(await getStaffByGroup(groupId));
   const sel = document.getElementById("startStaffSelect");
   sel.innerHTML = `<option value="">-- คนแรกในลำดับ (ค่าเริ่มต้น) --</option>` +
     staffList.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
@@ -1763,7 +1790,7 @@ async function onScheduleTabSelect(groupId) {
 // ข้อมูลที่ใช้จำลองการสุ่ม (กลุ่ม/เดือน/คนเริ่มต้น) เพื่อให้รู้ว่า "วันไหน ใครถึงคิวอยู่เวรจริง"
 async function skipContext() {
   if (!activeScheduleGroupId) return null;
-  const staffList = await getStaffByGroup(activeScheduleGroupId);
+  const staffList = filterActiveStaff(await getStaffByGroup(activeScheduleGroupId));
   const group = allGroups.find((g) => g.id === activeScheduleGroupId);
   const yyyyMm = document.getElementById("scheduleMonthInput").value;
   if (!group || !yyyyMm || !staffList.length) return null;
@@ -1923,8 +1950,8 @@ document.getElementById("generateScheduleBtn").onclick = async () => {
   if (!activeScheduleGroupId) return;
   const yyyyMm = document.getElementById("scheduleMonthInput").value;
   if (!yyyyMm) { alert("กรุณาเลือกเดือน"); return; }
-  const staffList = await getStaffByGroup(activeScheduleGroupId);
-  if (!staffList.length) { alert("กลุ่มนี้ยังไม่มีพนักงาน"); return; }
+  const staffList = filterActiveStaff(await getStaffByGroup(activeScheduleGroupId));
+  if (!staffList.length) { alert("กลุ่มนี้ยังไม่มีพนักงาน (ที่ยังไม่ถูกลบ)"); return; }
   const group = allGroups.find((g) => g.id === activeScheduleGroupId);
   if (isDispatchGroup(group)) {
     if (staffList.length < 3) { alert("พนักงานสั่งการต้องมีอย่างน้อย 3 คนจึงจะจัดตามรูปแบบรอบ 6 วันได้"); return; }
@@ -1983,7 +2010,7 @@ async function renderScheduleGrid() {
   let headRow2 = "<tr>";
   staffList.forEach((s, i) => {
     const band = i % 2 === 0 ? "emp-a" : "emp-b";
-    headRow1 += `<th colspan="${numCols}" class="${band} emp-border-end${s.isGuest ? " guest" : ""}">${escapeHtml(s.name)}<br><span style="font-weight:400;font-size:11px;">${escapeHtml(s.empId)}${s.isGuest ? " · ชุดอื่น" : ""}</span></th>`;
+    headRow1 += `<th colspan="${numCols}" class="${band} emp-border-end${s.isGuest ? " guest" : ""}">${escapeHtml(s.name)}<br><span style="font-weight:400;font-size:11px;">${escapeHtml(s.empId)}${s.isGuest ? " · ชุดอื่น" : ""}${s.deleted ? ' · <span style="color:#B23B3B;">ลบแล้ว</span>' : ""}</span></th>`;
     const lb = isDispatchGroup(group) ? "กะ" : "ช่วง";
     for (let i2 = 0; i2 < numCols; i2++) headRow2 += `<th class="${band}${i2 === numCols - 1 ? " emp-border-end" : ""}">${lb}${i2 + 1}</th>`;
   });
@@ -2246,7 +2273,7 @@ function closeModal() { const m = document.getElementById("calSwapModal"); if (m
 
 async function openCoverPickerModal() {
   updateCalModeBanner();
-  const everyone = await getAllStaff();
+  const everyone = filterActiveStaff(await getAllStaff());
   const candidates = everyone
     .filter((s) => s.id !== currentStaffProfile.id && canSwapBetweenGroups(calPickedMine.groupId, s.groupId))
     .sort((a, b) => {
@@ -2288,6 +2315,7 @@ async function openSwapConfirmModal(theirs) {
   const everyone = await getAllStaff();
   const target = everyone.find((s) => s.id === theirs.staffId);
   if (!target) { alert("ไม่พบข้อมูลพนักงานคนนี้"); return; }
+  if (target.deleted) { alert("พนักงานคนนี้ถูกลบออกจากระบบแล้ว จึงส่งคำขอแลกเวรด้วยไม่ได้"); return; }
   if (!target.linkedUid) { alert("พนักงานคนนี้ยังไม่ได้สมัครสมาชิก จึงตอบรับคำขอไม่ได้"); return; }
   const wrap = document.createElement("div");
   wrap.className = "modal-overlay"; wrap.id = "calSwapModal";
@@ -3298,7 +3326,7 @@ async function populateSwapForm(allRequests) {
     ? swapFormMyShifts.map((sh, i) => `<option value="${i}">${shiftDateLabel(sh.yyyyMm, sh.day, sh.shift)} — ${escapeHtml(sh.groupName)}</option>`).join("")
     : `<option value="">ไม่มีเวรที่แลกได้ (หรือทุกเวรมีคำขอค้างอยู่แล้ว)</option>`;
 
-  const everyone = await getAllStaff();
+  const everyone = filterActiveStaff(await getAllStaff());
   swapFormStaff = everyone
     .filter((s) => s.id !== me && canSwapBetweenGroups(currentStaffProfile.groupId, s.groupId))
     .sort((a, b) => {
@@ -3499,7 +3527,7 @@ async function renderAdminLinkBox(show) {
   const groups = allGroups.length ? allGroups : await getGroups();
   let opts = `<option value="">-- เลือกชื่อของคุณ --</option>`;
   for (const g of groups) {
-    const list = await getStaffByGroup(g.id);
+    const list = filterActiveStaff(await getStaffByGroup(g.id));
     if (!list.length) continue;
     opts += `<optgroup label="${escapeHtml(g.name)}">` + list.map((st) =>
       `<option value="${st.id}" data-group="${g.id}">${escapeHtml(staffDisplayName(st))}${st.empId ? " · " + escapeHtml(String(st.empId)) : ""}${st.linkedUid && st.linkedUid !== currentUid ? " (ผูกบัญชีอื่นแล้ว)" : ""}</option>`).join("") + `</optgroup>`;
