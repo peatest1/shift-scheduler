@@ -526,11 +526,11 @@ body.printing-form #printFormArea{display:block;}
       <div class="field"><label>ประเภทบัญชี</label>
         <select id="regRole">
           <option value="staff">พนักงาน</option>
-          <option value="admin">แอดมิน (ต้องมีรหัสตั้งค่าระบบ)</option>
-          <option value="payroll">ผู้ดูแลค่าตอบแทน (ต้องมีรหัสตั้งค่าระบบ)</option>
+          <option value="payroll">ผู้ดูแลค่าตอบแทน (รอแอดมินอนุมัติ)</option>
+          <option value="admin">แอดมิน (รอแอดมินอนุมัติ)</option>
         </select>
       </div>
-      <div class="field hidden" id="adminKeyField"><label>รหัสตั้งค่าระบบ (Admin setup key)</label><input type="password" id="regAdminKey"></div>
+      <p class="auth-sub hidden" id="regApprovalNote" style="margin:-4px 0 12px;color:#B45309;">บัญชีประเภทนี้ต้องให้แอดมินอนุมัติก่อน (เมนู จัดการพนักงาน → บัญชีผู้ใช้และสิทธิ์) จึงจะเข้าใช้งานได้</p>
       <button class="btn btn-primary" type="submit">สมัครสมาชิก</button>
       <p class="auth-sub" style="margin-top:12px;">* พนักงานทั่วไปต้องให้แอดมินเพิ่มชื่อ-รหัสพนักงานในระบบก่อน จึงจะสมัครสมาชิกผูกกับรหัสพนักงานนั้นได้</p>
     </form>
@@ -564,7 +564,7 @@ body.printing-form #printFormArea{display:block;}
     <div class="nav-item staff-only" data-view="myschedule">ตารางเวรของฉัน</div>
     <div class="nav-item" data-view="swap">แลกเวร<span class="nav-badge" id="swapBadge"></span></div>
     <div class="nav-item admin-only" data-view="schedule">จัดตารางเวร</div>
-    <div class="nav-item admin-only" data-view="staff">จัดการพนักงาน</div>
+    <div class="nav-item admin-only" data-view="staff">จัดการพนักงาน<span class="nav-badge" id="userApprovalBadge"></span></div>
     <div class="nav-item admin-only" data-view="holidays">ปฏิทิน / วันหยุด</div>
     <div class="nav-item" data-view="comp">ค่าตอบแทน</div>
     <div class="sidebar-foot">
@@ -608,6 +608,11 @@ body.printing-form #printFormArea{display:block;}
 
     <section class="view" id="view-staff">
       <div class="page-head"><div><h2>จัดการพนักงาน</h2><p>เพิ่ม / ลบ / เลื่อนลำดับพนักงานแต่ละกลุ่มเวร</p></div></div>
+
+      <details class="panel opt-panel" id="usersPanelDetails">
+        <summary>👤 บัญชีผู้ใช้และสิทธิ์ <span class="nav-badge" id="userApprovalBadge2"></span></summary>
+        <div class="opt-body"><div id="usersBox" class="empty-hint">กำลังโหลด...</div></div>
+      </details>
 
       <details class="panel opt-panel" id="overviewPanelDetails">
         <summary>📊 ภาพรวมเวรประจำเดือน</summary>
@@ -975,7 +980,6 @@ const firebaseConfig = {
   appId: "1:170306762465:web:fa863e88c36d42308c29a0"
 };
 // รหัสลับสำหรับสมัครบัญชีแอดมินคนแรก (แก้เป็นรหัสของคุณเองก่อน deploy แล้วอย่าเผยแพร่)
-const ADMIN_SETUP_KEY = "BTG888";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1347,7 +1351,7 @@ tabLoginBtn.onclick = () => { tabLoginBtn.classList.add("active"); tabRegisterBt
 tabRegisterBtn.onclick = () => { tabRegisterBtn.classList.add("active"); tabLoginBtn.classList.remove("active"); registerForm.style.display = ""; loginForm.style.display = "none"; clearMsg(); };
 document.getElementById("regRole").onchange = (e) => {
   const role = e.target.value;
-  document.getElementById("adminKeyField").classList.toggle("hidden", role === "staff");
+  document.getElementById("regApprovalNote").classList.toggle("hidden", role === "staff");
   // ผู้ดูแลค่าตอบแทน ไม่จำเป็นต้องเป็นพนักงานอยู่เวร จึงไม่บังคับกรอกรหัสพนักงาน
   document.getElementById("regEmpId").required = role !== "payroll";
 };
@@ -1377,18 +1381,22 @@ registerForm.addEventListener("submit", async (e) => {
   const email = document.getElementById("regEmail").value.trim();
   const password = document.getElementById("regPassword").value;
   const regRole = document.getElementById("regRole").value; // "staff" | "admin" | "payroll"
-  const adminKey = document.getElementById("regAdminKey").value;
-
   if (regRole !== "staff") {
-    if (adminKey !== ADMIN_SETUP_KEY) { showMsg("รหัสตั้งค่าระบบไม่ถูกต้อง", true); return; }
+    // แอดมิน/ผู้ดูแลค่าตอบแทน: สมัครเป็น "รออนุมัติ" (pending) แล้วให้แอดมินที่มีอยู่กดอนุมัติในระบบ
+    // (ปลอดภัยกว่าใช้รหัสลับในหน้าเว็บ เพราะโค้ดหน้าเว็บใครก็เปิดดูได้)
     registrationInProgress = true;
-    let adminCred = null;
+    let reqCred = null;
     try {
-      adminCred = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "users", adminCred.user.uid), { role: regRole, empId: empId || null, createdAt: Date.now() });
+      reqCred = await createUserWithEmailAndPassword(auth, email, password);
+      await setDoc(doc(db, "users", reqCred.user.uid), { role: "pending", requestedRole: regRole, empId: empId || null, email, createdAt: Date.now() });
+      await signOut(auth);
+      registrationInProgress = false;
+      tabLoginBtn.onclick();
+      showMsg(`ส่งคำขอสมัครเป็น "${regRole === "admin" ? "แอดมิน" : "ผู้ดูแลค่าตอบแทน"}" แล้ว — รอแอดมินอนุมัติ แล้วเข้าสู่ระบบด้วยอีเมลนี้ได้เลย`);
+      return;
     } catch (err) {
-      if (adminCred) await deleteUser(adminCred.user).catch(() => signOut(auth));
-      showMsg("สมัครไม่สำเร็จ: " + friendlyError(err) + (String(err.code || "").includes("permission-denied") ? " — ให้สมัครแบบพนักงานก่อน แล้วให้แอดมินเดิมเปลี่ยนสิทธิ์ใน Firebase Console" : ""), true);
+      if (reqCred) await deleteUser(reqCred.user).catch(() => signOut(auth));
+      showMsg("สมัครไม่สำเร็จ: " + friendlyError(err), true);
     }
     registrationInProgress = false;
     await handleAuthUser(auth.currentUser);
@@ -1408,7 +1416,7 @@ registerForm.addEventListener("submit", async (e) => {
       await deleteUser(cred.user).catch(() => signOut(auth));
       showMsg(problem, true);
     } else {
-      await setDoc(doc(db, "users", cred.user.uid), { role: "staff", empId, createdAt: Date.now() });
+      await setDoc(doc(db, "users", cred.user.uid), { role: "staff", empId, email, createdAt: Date.now() });
       await updateDoc(doc(db, "staff", staffDoc.id), { linkedUid: cred.user.uid });
     }
   } catch (err) {
@@ -1439,7 +1447,7 @@ function switchView(name) {
     if (!swapActiveTab) switchSwapTab(currentRole === "admin" ? "approve" : "send");
     renderSwapView();
   }
-  if (name === "staff") renderOverview();
+  if (name === "staff") { renderOverview(); renderUsersPanel(); }
   if (name === "comp") renderComp();
   if (name === "schedule" && typeof refreshSkipUI === "function") refreshSkipUI();
   if (currentRole) refreshSwapBadge();
@@ -1467,6 +1475,13 @@ async function handleAuthUser(user) {
   }
   const userDoc = await getDoc(doc(db, "users", user.uid));
   if (!userDoc.exists()) { await signOut(auth); return; }
+  if (!["staff", "admin", "payroll"].includes(userDoc.data().role)) {
+    // pending = รออนุมัติ, rejected = ไม่อนุมัติ
+    const st = userDoc.data().role;
+    await signOut(auth);
+    showMsg(st === "rejected" ? "คำขอสมัครของบัญชีนี้ไม่ได้รับการอนุมัติ กรุณาติดต่อแอดมิน" : "บัญชีนี้ยังรอแอดมินอนุมัติสิทธิ์ — เมื่อได้รับอนุมัติแล้วจึงจะเข้าสู่ระบบได้", true);
+    return;
+  }
   currentRole = userDoc.data().role;
   currentUid = user.uid;
 
@@ -1501,6 +1516,7 @@ async function handleAuthUser(user) {
   document.querySelectorAll(".staff-only").forEach((el) => el.style.display = (currentRole === "staff" || isStaffToo) ? "" : "none");
   document.querySelectorAll(".comp-admin-only").forEach((el) => el.style.display = (currentRole === "admin" || currentRole === "payroll") ? "" : "none");
   renderAdminLinkBox(currentRole === "admin" && !isStaffToo);
+  if (currentRole === "admin") refreshUserApprovalBadge();
 
   switchView("calendar");
 
@@ -1515,6 +1531,83 @@ async function handleAuthUser(user) {
   if (currentRole === "admin") await populatePrintSettingsForm();
   refreshSwapBadge();
   initGcalUi();
+}
+
+// ==========================================================================
+// บัญชีผู้ใช้และสิทธิ์ (แอดมินเท่านั้น): อนุมัติคำขอสมัครแอดมิน/ผู้ดูแลค่าตอบแทน และเปลี่ยนสิทธิ์ผู้ใช้
+// ==========================================================================
+const ROLE_LABELS = { admin: "แอดมิน", payroll: "ผู้ดูแลค่าตอบแทน", staff: "พนักงาน", pending: "รออนุมัติ", rejected: "ไม่อนุมัติ" };
+async function loadAllUsers() {
+  const snap = await getDocs(collection(db, "users"));
+  return snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+}
+async function refreshUserApprovalBadge() {
+  try {
+    const n = (await loadAllUsers()).filter((u) => u.role === "pending").length;
+    ["userApprovalBadge", "userApprovalBadge2"].forEach((id) => { const el = document.getElementById(id); if (el) el.textContent = n ? String(n) : ""; });
+    if (n) document.getElementById("usersPanelDetails").open = true;
+  } catch (e) { /* อ่านรายชื่อผู้ใช้ไม่ได้ (ยังไม่ได้อัปเดต Rules) — ไม่ร้ายแรง */ }
+}
+async function renderUsersPanel() {
+  const box = document.getElementById("usersBox");
+  if (currentRole !== "admin" || !box) return;
+  let users;
+  try { users = await loadAllUsers(); }
+  catch (e) {
+    box.innerHTML = `<p style="color:#B23B3B;">อ่านรายชื่อผู้ใช้ไม่ได้ (${escapeHtml(friendlyError(e))}) — ต้องอัปเดต Firestore Rules ให้แอดมินอ่าน/แก้คอลเลกชัน users ได้ก่อน</p>`;
+    return;
+  }
+  const staffAll = await getAllStaff();
+  const nameOf = (u) => {
+    const st = u.empId ? staffAll.find((s) => s.empId != null && String(s.empId).trim() === String(u.empId).trim()) : null;
+    return st ? st.name : "";
+  };
+  const order = { pending: 0, admin: 1, payroll: 2, staff: 3, rejected: 4 };
+  users.sort((a, b) => (order[a.role] ?? 9) - (order[b.role] ?? 9) || (b.createdAt || 0) - (a.createdAt || 0));
+  const pending = users.filter((u) => u.role === "pending");
+  const others = users.filter((u) => u.role !== "pending");
+  const myEmail = auth.currentUser && auth.currentUser.email;
+  const who = (u) => `<b>${escapeHtml(nameOf(u) || u.email || (u.uid === currentUid ? myEmail : "") || "(บัญชีเก่า ไม่มีข้อมูลอีเมล)")}</b>${u.uid === currentUid ? ' <span style="font-size:12px;color:var(--ink-soft);">(คุณ)</span>' : ""}
+    <div style="font-size:12px;color:var(--ink-soft);">${escapeHtml([u.email && nameOf(u) ? u.email : "", u.empId ? "รหัส " + u.empId : ""].filter(Boolean).join(" · ") || "uid " + u.uid.slice(0, 8))}</div>`;
+  let html = "";
+  if (pending.length) {
+    html += `<h4 style="margin:0 0 8px;color:#B45309;">รออนุมัติ (${pending.length})</h4>` + pending.map((u) => `
+      <div class="row-flex" style="align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;margin-bottom:6px;border:1px solid #F3C98B;background:#FFF8EC;border-radius:8px;">
+        <div>${who(u)}<div style="font-size:12.5px;margin-top:2px;">ขอสิทธิ์: <b>${ROLE_LABELS[u.requestedRole] || u.requestedRole}</b></div></div>
+        <span class="row-flex" style="gap:6px;width:auto;">
+          <button class="btn btn-primary btn-small user-act" data-act="approve" data-uid="${u.uid}" style="width:auto;">อนุมัติ</button>
+          <button class="btn btn-ghost btn-small user-act" data-act="reject" data-uid="${u.uid}" style="width:auto;">ไม่อนุมัติ</button>
+        </span>
+      </div>`).join("");
+  }
+  html += `<h4 style="margin:${pending.length ? "14px" : "0"} 0 8px;">ผู้ใช้ทั้งหมด (${others.length})</h4>` + others.map((u) => `
+    <div class="row-flex" style="align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);">
+      <div>${who(u)}</div>
+      <select class="user-role-select" data-uid="${u.uid}" style="width:auto;" ${u.uid === currentUid ? 'disabled title="เปลี่ยนสิทธิ์ของตัวเองไม่ได้"' : ""}>
+        ${["admin", "payroll", "staff", "rejected"].map((r) => `<option value="${r}" ${u.role === r ? "selected" : ""}>${ROLE_LABELS[r]}</option>`).join("")}
+      </select>
+    </div>`).join("");
+  box.innerHTML = `<div style="text-align:left;">${html}</div>`;
+  box.querySelectorAll(".user-act").forEach((b) => {
+    b.onclick = async () => {
+      const u = users.find((x) => x.uid === b.dataset.uid);
+      const approve = b.dataset.act === "approve";
+      const newRole = approve ? (u.requestedRole || "staff") : "rejected";
+      if (!confirm(approve ? `อนุมัติให้ ${nameOf(u) || u.email} เป็น "${ROLE_LABELS[newRole]}" ?` : `ไม่อนุมัติคำขอของ ${nameOf(u) || u.email} ?`)) return;
+      try { await updateDoc(doc(db, "users", u.uid), { role: newRole }); }
+      catch (e) { alert("บันทึกไม่สำเร็จ: " + friendlyError(e)); }
+      renderUsersPanel(); refreshUserApprovalBadge();
+    };
+  });
+  box.querySelectorAll(".user-role-select").forEach((sel) => {
+    sel.onchange = async () => {
+      const u = users.find((x) => x.uid === sel.dataset.uid);
+      if (!confirm(`เปลี่ยนสิทธิ์ของ ${nameOf(u) || u.email} จาก "${ROLE_LABELS[u.role]}" เป็น "${ROLE_LABELS[sel.value]}" ?`)) { sel.value = u.role; return; }
+      try { await updateDoc(doc(db, "users", u.uid), { role: sel.value }); }
+      catch (e) { alert("บันทึกไม่สำเร็จ: " + friendlyError(e)); }
+      renderUsersPanel(); refreshUserApprovalBadge();
+    };
+  });
 }
 
 async function populatePrintSettingsForm() {
