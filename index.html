@@ -3323,19 +3323,18 @@ async function buildAndPrintCompForm() {
   const today = new Date();
   const printDateThai = `${today.getDate()} ${THAI_MONTHS[today.getMonth()]} ${today.getFullYear() + 543}`;
 
-  // คำนวณยอดรวมทั้งหมดทุกชุดไว้ก่อน เพื่อแสดงในหน้าสุดท้าย
-  let overallGrandSum = 0;
-  dutyGroups.forEach((g, gi) => {
-    groupStaffLists[gi].forEach((st) => {
-      const autoCount = compCountFor(st.id, y, m, numDays, assignByGroup, compCells);
-      const used = overrideMap[st.id] != null ? overrideMap[st.id] : autoCount;
-      overallGrandSum += used * shiftRate(st.salary);
-    });
-  });
+  // แยกแผ่นตามตำแหน่ง (ยังไม่มีช่องตำแหน่งในระบบ จึงดูจากรหัสพนักงาน): 6 หลัก = พชง., 7 หลัก = ชชง.
+  // เรียงตามลำดับชุดและลำดับในชุดเหมือนเดิม — ไม่มียอดรวมทุกชุดแล้ว แต่ละแผ่นมีช่องลงนามของตัวเอง
+  const digits = (st) => String(st.empId || "").replace(/\D/g, "").length;
+  const sheets = [
+    { label: "พชง.", list: dutyStaff.filter((st) => digits(st) === 6) },
+    { label: "ชชง.", list: dutyStaff.filter((st) => digits(st) === 7) },
+    { label: "อื่นๆ (รหัสพนักงานไม่ใช่ 6 หรือ 7 หลัก)", list: dutyStaff.filter((st) => ![6, 7].includes(digits(st))) },
+  ].filter((sh) => sh.list.length);
 
   let pagesHtml = "";
-  dutyGroups.forEach((g, gi) => {
-    pagesHtml += buildCompPrintPage(g, groupStaffLists[gi], overrideMap, assignByGroup, compCells, y, m, buddhistYear, monthName, numDays, settings, printDateThai, gi === dutyGroups.length - 1, overallGrandSum);
+  sheets.forEach((sh) => {
+    pagesHtml += buildCompPrintPage(sh.label, sh.list, overrideMap, assignByGroup, compCells, y, m, buddhistYear, monthName, numDays, settings, printDateThai);
   });
 
   document.getElementById("printFormArea").innerHTML = pagesHtml;
@@ -3344,8 +3343,8 @@ async function buildAndPrintCompForm() {
 }
 document.getElementById("printCompBtn").onclick = buildAndPrintCompForm;
 
-// สร้าง 1 หน้าแยกต่อชุดอยู่เวร (เหมือนแบบฟอร์มจัดตารางเวรปกติ) — ยอดรวมเงินทั้งหมดทุกชุด + ลายเซ็น แสดงเฉพาะหน้าสุดท้าย
-function buildCompPrintPage(group, staffList, overrideMap, assignByGroup, compCells, y, m, buddhistYear, monthName, numDays, s, printDateThai, isLastPage, overallGrandSum) {
+// สร้าง 1 แผ่นต่อตำแหน่ง (พชง. / ชชง.) พร้อมช่องลงนามในแต่ละแผ่น
+function buildCompPrintPage(posLabel, staffList, overrideMap, assignByGroup, compCells, y, m, buddhistYear, monthName, numDays, s, printDateThai) {
   const nameRow = `<tr><th rowspan="3" style="width:5.5%;" class="pf-pend">วันที่</th><th rowspan="3" style="width:4%;" class="pf-pend">วัน</th>` +
     staffList.map((st, i) => `<th colspan="3"${pfCls(i, null)}>${escapeHtml(st.name)}</th>`).join("") + `</tr>`;
   const empIdRow = `<tr>` + staffList.map((st, i) => `<th colspan="3"${pfCls(i, null)}>${escapeHtml(st.empId)}</th>`).join("") + `</tr>`;
@@ -3413,8 +3412,6 @@ function buildCompPrintPage(group, staffList, overrideMap, assignByGroup, compCe
       <span>ช่วง 2 (8 ชม.) เวลา 08.30-16.30 น.</span>
       <span>ช่วง 3 (8 ชม.) เวลา 16.30-00.30 น.</span>
     </div>
-    ${isLastPage ? `
-    <p style="margin-top:4px;font-weight:700;">รวมค่าตอบแทนทั้งหมดทุกชุด: ${fmtBaht(overallGrandSum)} บาท</p>
     <div class="pf-footer">
       <div class="pf-col">
         <div class="pf-sign-space"></div>
@@ -3428,7 +3425,7 @@ function buildCompPrintPage(group, staffList, overrideMap, assignByGroup, compCe
         <div>${escapeHtml(s.managerTitle || "")}</div>
         <div>ผู้อนุมัติ</div>
       </div>
-    </div>` : ""}
+    </div>
   </div>`;
 }
 
