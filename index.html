@@ -518,6 +518,7 @@ body.printing-form #printFormArea{display:block;}
       <div class="field"><label>อีเมล</label><input type="email" id="loginEmail" required></div>
       <div class="field"><label>รหัสผ่าน</label><input type="password" id="loginPassword" required></div>
       <button class="btn btn-primary" type="submit">เข้าสู่ระบบ</button>
+      <p style="text-align:center;margin:12px 0 0;"><a href="#" id="forgotPwLink" style="color:var(--teal-700, #1F6F66);font-size:14px;">ลืมรหัสผ่าน?</a></p>
     </form>
     <form id="registerForm" style="display:none;">
       <div class="field"><label>รหัสพนักงาน</label><input type="text" id="regEmpId" placeholder="เช่น 501398" required></div>
@@ -945,7 +946,7 @@ if ("serviceWorker" in navigator) {
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signOut,
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, deleteUser
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, deleteUser, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc as _setDoc, updateDoc as _updateDoc, deleteDoc as _deleteDoc, addDoc as _addDoc,
@@ -1364,6 +1365,22 @@ function friendlyError(err) {
   if (code.includes("permission-denied")) return "ไม่มีสิทธิ์ทำรายการนี้";
   return err.message || "เกิดข้อผิดพลาด";
 }
+// ลืมรหัสผ่าน: Firebase ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่อีเมล (ไม่ต้องให้แอดมินทำอะไร)
+document.getElementById("forgotPwLink").onclick = async (e) => {
+  e.preventDefault(); clearMsg();
+  let email = document.getElementById("loginEmail").value.trim();
+  if (!email) email = (prompt("กรอกอีเมลที่ใช้สมัครสมาชิก เพื่อรับลิงก์ตั้งรหัสผ่านใหม่") || "").trim();
+  if (!email) return;
+  try {
+    auth.languageCode = "th";
+    await sendPasswordResetEmail(auth, email);
+    showMsg(`ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ ${escapeHtml(email)} แล้ว — เปิดอีเมลแล้วกดลิงก์เพื่อตั้งรหัสใหม่ (ถ้าไม่เห็น ลองดูในโฟลเดอร์ Spam/จดหมายขยะ)`);
+  } catch (err) {
+    const code = err.code || "";
+    showMsg(code.includes("invalid-email") ? "รูปแบบอีเมลไม่ถูกต้อง" : code.includes("too-many-requests") ? "ขอรีเซ็ตบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่" : "ส่งลิงก์ไม่สำเร็จ: " + friendlyError(err), true);
+  }
+};
+
 // ระหว่างสมัครสมาชิก ยังไม่ให้ auth guard ทำงาน (เพราะเอกสาร users ยังเขียนไม่เสร็จ จะโดน signOut)
 let registrationInProgress = false;
 
