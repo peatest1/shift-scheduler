@@ -1725,13 +1725,17 @@ async function renderStaffList() {
   const insp = isInspectorGroup(g);
   const fullList = await getStaffByGroup(activeStaffGroupId);
   if (!fullList.length) { box.innerHTML = `<div class="empty-hint">ยังไม่มีพนักงานในกลุ่มนี้</div>`; return; }
+  // สถานะบัญชี + ปุ่ม "ปลดบัญชี" (ใช้เมื่อพนักงานต้องสมัครใหม่ เช่น ลบบัญชีใน Firebase ไปแล้ว / ผูกผิดคน)
+  const accountTag = (s) => s.linkedUid
+    ? `<span class="tag">สมัครแล้ว</span> <button class="mini-btn" data-act="unlink" data-id="${s.id}" title="ปลดการผูกบัญชี ให้พนักงานคนนี้สมัครสมาชิกใหม่ได้">ปลดบัญชี</button>`
+    : '<span class="tag" style="background:#F7E3DE;">ยังไม่สมัคร</span>';
   const list = fullList.filter((s) => !s.deleted);
   const deletedList = fullList.filter((s) => s.deleted);
   let html = "";
   if (!list.length) html += `<div class="empty-hint">ยังไม่มีพนักงานในกลุ่มนี้</div>`;
   else if (isMobileView()) {
     html = list.map((s, idx) => `<div class="m-card">
-      <div class="m-card-head"><span class="m-idx">${idx + 1}</span><strong class="m-title">${escapeHtml(s.name)}</strong>${s.linkedUid ? '<span class="tag">สมัครแล้ว</span>' : '<span class="tag" style="background:#F7E3DE;">ยังไม่สมัคร</span>'}</div>
+      <div class="m-card-head"><span class="m-idx">${idx + 1}</span><strong class="m-title">${escapeHtml(s.name)}</strong>${accountTag(s)}</div>
       ${insp
         ? `<div class="m-row"><span class="m-label">ตำแหน่ง</span><input type="text" class="position-input m-input" data-id="${s.id}" value="${escapeHtml(s.position || "")}" placeholder="ใส่ตำแหน่ง"></div>`
         : `<div class="m-row"><span class="m-label">ชื่อเล่น</span><input type="text" class="nickname-input m-input" data-id="${s.id}" value="${escapeHtml(s.nickname || "")}" placeholder="ใส่ชื่อเล่น"></div>
@@ -1743,7 +1747,7 @@ async function renderStaffList() {
     list.forEach((s, idx) => {
       html += `<tr><td>${idx + 1}</td><td class="name-cell">${s.name}</td>
         <td><input type="text" class="position-input" data-id="${s.id}" value="${escapeHtml(s.position || "")}" placeholder="ใส่ตำแหน่ง" style="width:140px;padding:4px 6px;border:1px solid var(--line);border-radius:2px;font-family:inherit;"></td>
-        <td>${s.linkedUid ? '<span class="tag">สมัครแล้ว</span>' : '<span class="tag" style="background:#F7E3DE;">ยังไม่สมัคร</span>'}</td>
+        <td>${accountTag(s)}</td>
         <td><button class="mini-btn" data-act="up" data-id="${s.id}">▲</button>
         <button class="mini-btn" data-act="down" data-id="${s.id}">▼</button>
         <button class="mini-btn" data-act="del" data-id="${s.id}">ลบ</button></td></tr>`;
@@ -1755,7 +1759,7 @@ async function renderStaffList() {
     html += `<tr><td>${idx + 1}</td><td class="name-cell">${s.name}</td>
       <td><input type="text" class="nickname-input" data-id="${s.id}" value="${s.nickname || ""}" placeholder="ใส่ชื่อเล่น" style="width:100px;padding:4px 6px;border:1px solid var(--line);border-radius:2px;font-family:inherit;"></td>
       <td>${s.empId}</td>
-      <td>${s.linkedUid ? '<span class="tag">สมัครแล้ว</span>' : '<span class="tag" style="background:#F7E3DE;">ยังไม่สมัคร</span>'}</td>
+      <td>${accountTag(s)}</td>
       <td><button class="mini-btn" data-act="up" data-id="${s.id}">▲</button>
       <button class="mini-btn" data-act="down" data-id="${s.id}">▼</button>
       <button class="mini-btn" data-act="del" data-id="${s.id}">ลบ</button></td></tr>`;
@@ -1789,6 +1793,16 @@ async function renderStaffList() {
       if (act === "up" || act === "down") await moveStaff(activeStaffGroupId, id, act);
       if (act === "del") { if (confirm('ยืนยันลบพนักงานคนนี้?\n\n(เป็นการ "ลบแบบซ่อน" ชื่อจะยังแสดงถูกต้องในตารางเวร/ประวัติเก่าที่เคยมีอยู่ แต่จะไม่ถูกเลือกให้เวรใหม่อีก — กู้คืนได้ภายหลังจากรายการ "พนักงานที่ลบแล้ว")')) await removeStaff(id); }
       if (act === "restore") await restoreStaff(id);
+      if (act === "unlink") {
+        const st = fullList.find((x) => x.id === id);
+        if (st.linkedUid === currentUid) { alert("ปลดบัญชีของตัวเองไม่ได้"); return; }
+        if (!confirm(`ปลดการผูกบัญชีของ ${st.name} ?\n\nบัญชีเดิมจะเข้าระบบในนามพนักงานคนนี้ไม่ได้อีก และพนักงานคนนี้จะ "สมัครสมาชิก" ใหม่ด้วยรหัสพนักงานเดิมได้ (ตารางเวร/ประวัติเดิมยังอยู่ครบ)\n\nใช้เมื่อ: ลบบัญชีใน Firebase ไปแล้ว, ลืมอีเมลที่ใช้สมัคร หรือผูกบัญชีผิดคน`)) return;
+        try {
+          await updateDoc(doc(db, "staff", id), { linkedUid: null });
+          await deleteDoc(doc(db, "users", st.linkedUid)).catch(() => {});
+          alert(`ปลดบัญชีแล้ว — ให้ ${st.name} สมัครสมาชิกใหม่ด้วยรหัสพนักงาน ${st.empId}`);
+        } catch (e) { alert("ปลดบัญชีไม่สำเร็จ: " + friendlyError(e)); }
+      }
       if (act === "purge") { if (confirm("⚠️ ลบถาวร จะลบข้อมูลพนักงานคนนี้ออกจากระบบจริง กู้คืนไม่ได้อีก และชื่อในตารางเวร/ประวัติเก่าที่เคยมีจะกลายเป็น \"?\"\n\nยืนยันลบถาวรหรือไม่?")) await permanentlyDeleteStaff(id); }
       renderStaffList();
     };
