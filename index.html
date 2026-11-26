@@ -640,6 +640,8 @@ body.printing-form #printFormArea{display:block;}
       <div class="panel no-print">
         <div class="row-flex" style="align-items:flex-end;">
           <div class="field" style="max-width:200px;margin-bottom:0;"><label>เดือน</label><input type="month" id="compMonthInput"></div>
+          <button class="btn btn-primary comp-admin-only" id="compCalBtn" style="height:38px;width:auto;">🗓️ ปฏิทินสรุปค่าตอบแทน (สลับชื่อได้)</button>
+          <button class="btn btn-ghost comp-admin-only" id="compGridBtn" style="height:38px;">📋 แก้วันอยู่เวร (ตารางรวมทุกคน)</button>
           <button class="btn btn-ghost comp-admin-only" id="printCompBtn" style="height:38px;">🖨️ พิมพ์แบบฟอร์มเบิกค่าตอบแทน</button>
         </div>
       </div>
@@ -3121,6 +3123,337 @@ async function loadCompMonth(yyyyMm, staffIds) {
   return { assignByGroup, cells };
 }
 
+// เลือกคนที่จะตัดออกจากกะที่เต็มแล้ว (คืนค่า staff หรือ null ถ้ายกเลิก)
+function pickCompVictim(st, d, sh, others, maxPerShift) {
+  return new Promise((resolve) => {
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "compPickModal"; ov.style.zIndex = "120";
+    ov.innerHTML = `<div class="modal-box" style="max-width:420px;">
+      <h3 style="margin-top:0;">⚠️ กะนี้ครบ ${maxPerShift} คนแล้ว</h3>
+      <p style="margin:0 0 10px;">วันที่ ${d} ช่วง${sh + 1} มีผู้ปฏิบัติงานครบ ${maxPerShift} คนแล้ว ถ้าจะให้ <b>${escapeHtml(staffDisplayName(st))}</b> อยู่กะนี้ ต้องเลือกตัดออก 1 คน:</p>
+      ${others.map((x) => `<button class="btn btn-ghost comp-victim" data-id="${x.id}" style="display:block;width:100%;margin-bottom:6px;text-align:left;">ตัด ${escapeHtml(staffDisplayName(x))} <span style="color:var(--ink-soft);font-size:12px;">· ${escapeHtml(x.groupName || "")}</span></button>`).join("")}
+      <div class="modal-actions"><button class="btn btn-ghost" id="compPickCancel" style="width:auto;">ยกเลิก</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+    const done = (v) => { ov.remove(); resolve(v); };
+    ov.querySelectorAll(".comp-victim").forEach((bt) => bt.onclick = () => done(others.find((x) => x.id === bt.dataset.id)));
+    document.getElementById("compPickCancel").onclick = () => done(null);
+  });
+}
+
+// ปฏิทินสรุปค่าตอบแทน: ดึงชื่อจากปฏิทินเวรจริง แล้วให้ผู้ดูแลค่าตอบแทน "สลับ/เปลี่ยน/ตัด/เพิ่ม" ชื่อได้แบบปฏิทิน
+// ใช้คิดค่าตอบแทนเท่านั้น (บันทึกเป็นวันอยู่เวรจริง cellAdds/cellRemoves เหมือนตารางรวม) — ไม่เปลี่ยนปฏิทิน/ตารางเวรจริง
+async function openCompCalendarEditor(yyyyMm) {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const numDays = daysInMonth(yyyyMm);
+  if (!allGroups.length) allGroups = await getGroups();
+  const dutyGroups = allGroups.filter(isDutyRosterGroup).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const lists = await Promise.all(dutyGroups.map((g) => getStaffByGroup(g.id)));
+  const staff = lists.flatMap((l, gi) => l.map((x) => ({ ...x, groupName: dutyGroups[gi].name, gOrder: gi })));
+  if (!staff.length) { alert("ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวร"); return; }
+  const { assignByGroup, cells } = await loadCompMonth(yyyyMm, staff.map((x) => x.id));
+  const cloneCells = (c) => Object.fromEntries(Object.entries(c).map(([id, v]) => [id, { adds: new Set(v.adds), removes: new Set(v.removes) }]));
+  const snapshot = cloneCells(cells);
+  let work = cloneCells(cells);
+  const dirty = new Set();
+  const maxPerShift = dutyGroups.length || 3;
+  const byId = (id) => staff.find((x) => x.id === id);
+  const nick = (x) => (x.nickname && x.nickname.trim()) || x.name;
+  const stateOf = (id, d, sh) => compCellState(id, y, m, d, sh, assignByGroup, work);
+  const onShift = (d, sh) => staff.filter((x) => ["sched", "added"].includes(stateOf(x.id, d, sh)));
+  const setOn = (id, d, sh, on) => {
+    if (!work[id]) work[id] = { adds: new Set(), removes: new Set() };
+    const k = `${d}_${sh}`, st = stateOf(id, d, sh), w = work[id];
+    if (on) { if (st === "removed") w.removes.delete(k); else if (st === null) w.adds.add(k); }
+    else { if (st === "sched") w.removes.add(k); else if (st === "added") w.adds.delete(k); }
+    dirty.add(id);
+  };
+  let swapFrom = null; // {id, d, sh} ระหว่างเลือกเวรที่จะสลับด้วย
+
+  const wrap = document.createElement("div");
+  wrap.className = "modal-overlay"; wrap.id = "calSwapModal";
+  wrap.innerHTML = `<div class="modal-box" style="max-width:none;width:98vw;height:94vh;display:flex;flex-direction:column;padding:14px;">
+    <div class="row-flex" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+      <div>
+        <h3 style="margin:0;">ปฏิทินสรุปค่าตอบแทน · ${THAI_MONTHS[m - 1]} ${y + 543}</h3>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin:4px 0 0;">ดึงชื่อมาจากปฏิทินเวรจริง · กดชื่อเพื่อ สลับ / เปลี่ยนคน / ตัดออก · กด ＋ เพื่อเพิ่มคน — ใช้คิดค่าตอบแทนเท่านั้น ไม่เปลี่ยนปฏิทินเวรจริง<br>
+          <span style="background:#FDE7C8;color:#92400E;border:1px solid #D97706;border-radius:10px;padding:0 6px;">ชื่อ</span> = เปลี่ยนจากปฏิทินจริง ·
+          <s style="color:#B23B3B;">ชื่อ</s> = ตัดออก (กดเพื่อคืน)</p>
+      </div>
+      <div class="row-flex" style="gap:6px;width:auto;">
+        <span id="ccDirty" style="font-size:13px;color:#B45309;align-self:center;"></span>
+        <button class="btn btn-ghost" id="ccReset" style="width:auto;">ยกเลิกที่แก้</button>
+        <button class="btn btn-ghost" id="ccClose" style="width:auto;">ปิด</button>
+        <button class="btn btn-primary" id="ccSave" style="width:auto;">บันทึก</button>
+      </div>
+    </div>
+    <div id="ccSwapBar" class="hidden" style="margin-top:8px;padding:8px 12px;background:#FFF3D6;border:1px solid #E8B44C;border-radius:8px;font-size:14px;"></div>
+    <div id="ccCal" style="flex:1;overflow:auto;margin-top:10px;"></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const cal = document.getElementById("ccCal");
+  const chip = (x, d, sh, kind) => {
+    const sel = swapFrom && swapFrom.id === x.id && swapFrom.d === d && swapFrom.sh === sh;
+    const style = kind === "added" ? "background:#FDE7C8;color:#92400E;border:1px solid #D97706;"
+      : kind === "removed" ? "background:transparent;color:#B23B3B;border:1px dashed #E8B4B4;text-decoration:line-through;"
+      : "background:#fff;color:#0C1210;border:1px solid #CFC9B8;";
+    return `<button class="cc-chip" data-id="${x.id}" data-d="${d}" data-s="${sh}" data-k="${kind}" title="${escapeHtml(x.name)} · ${escapeHtml(x.groupName)}"
+      style="${style}${sel ? "outline:3px solid #2563EB;" : ""}border-radius:10px;padding:1px 7px;margin:1px;font-size:13px;font-family:inherit;cursor:pointer;">${escapeHtml(nick(x))}</button>`;
+  };
+  const draw = () => {
+    const sy = cal.scrollTop;
+    const first = new Date(y, m - 1, 1).getDay();
+    let h = `<table style="width:100%;border-collapse:collapse;table-layout:fixed;"><thead><tr>` +
+      ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map((n, i) => `<th style="background:#0B3D38;color:#fff;padding:4px;${i === 0 ? "background:#C62828;" : ""}">${n}</th>`).join("") + `</tr></thead><tbody><tr>`;
+    for (let i = 0; i < first; i++) h += `<td style="border:1px solid var(--line);background:#FAF8F3;"></td>`;
+    for (let d = 1; d <= numDays; d++) {
+      const dow = new Date(y, m - 1, d).getDay();
+      const hol = holidaysMap[todayISO(y, m, d)];
+      if (dow === 0 && d !== 1) h += `</tr><tr>`;
+      h += `<td style="border:1px solid var(--line);vertical-align:top;padding:0;">
+        <div style="text-align:center;font-weight:800;padding:2px;background:${hol ? "var(--amber-500)" : dow === 0 ? "#F6D5D5" : dow === 6 ? "#D9E6F2" : "#EFEAE0"};${hol ? "color:#fff;" : ""}" ${hol ? `title="${escapeHtml(hol)}"` : ""}>${d}</div>`;
+      for (let sh = 0; sh < 3; sh++) {
+        if (!compActiveShifts(y, m, d).includes(sh)) { h += `<div style="text-align:center;color:#B7B0A0;font-size:12px;border-top:1px dashed #D8D2C4;padding:2px;">-</div>`; continue; }
+        const people = staff.map((x) => ({ x, st: stateOf(x.id, d, sh) })).filter((p) => p.st).sort((a, b) => a.x.gOrder - b.x.gOrder);
+        const working = people.filter((p) => p.st !== "removed").length;
+        h += `<div style="border-top:1px dashed #D8D2C4;padding:2px;text-align:center;line-height:1.5;">
+          <span style="font-size:10px;color:#8A8378;">ช่วง${sh + 1}</span><br>` +
+          people.map((p) => chip(p.x, d, sh, p.st)).join("") +
+          (working < maxPerShift ? `<button class="cc-add" data-d="${d}" data-s="${sh}" title="เพิ่มคนในช่วงนี้" style="border:1px dashed #1F6F66;color:#1F6F66;background:#fff;border-radius:10px;padding:0 7px;margin:1px;cursor:pointer;font-family:inherit;">＋</button>` : "") +
+          `</div>`;
+      }
+      h += `</td>`;
+    }
+    const tail = (first + numDays) % 7;
+    if (tail) for (let i = tail; i < 7; i++) h += `<td style="border:1px solid var(--line);background:#FAF8F3;"></td>`;
+    h += `</tr></tbody></table>`;
+    cal.innerHTML = h; cal.scrollTop = sy;
+    document.getElementById("ccDirty").textContent = dirty.size ? `แก้ไขแล้ว ${dirty.size} คน (ยังไม่บันทึก)` : "";
+    const bar = document.getElementById("ccSwapBar");
+    bar.classList.toggle("hidden", !swapFrom);
+    if (swapFrom) {
+      bar.innerHTML = `🔄 กำลังสลับ: <b>${escapeHtml(nick(byId(swapFrom.id)))}</b> (วันที่ ${swapFrom.d} ช่วง${swapFrom.sh + 1}) — กดชื่อคนที่จะสลับด้วย <button class="btn btn-ghost btn-small" id="ccSwapCancel" style="width:auto;margin-left:8px;">ยกเลิกการสลับ</button>`;
+      document.getElementById("ccSwapCancel").onclick = () => { swapFrom = null; draw(); };
+    }
+  };
+  // หน้าต่างเลือกคน (ใช้ตอน เปลี่ยนคน / เพิ่มคน)
+  const pickPerson = (title, d, sh) => new Promise((resolve) => {
+    const busy = new Set(onShift(d, sh).map((x) => x.id));
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.style.zIndex = "120";
+    ov.innerHTML = `<div class="modal-box" style="max-width:440px;"><h3 style="margin-top:0;">${title}</h3>
+      <div style="max-height:55vh;overflow:auto;">` +
+      dutyGroups.map((g, gi) => `<div style="font-size:12px;color:var(--ink-soft);margin:8px 0 4px;">${escapeHtml(g.name)}</div>` +
+        staff.filter((x) => x.gOrder === gi && !x.deleted).map((x) => `<button class="btn btn-ghost cc-pick" data-id="${x.id}" ${busy.has(x.id) ? "disabled" : ""} style="display:inline-block;width:auto;margin:0 4px 4px 0;padding:4px 10px;">${escapeHtml(nick(x))}${busy.has(x.id) ? " (อยู่แล้ว)" : ""}</button>`).join("")).join("") +
+      `</div><div class="modal-actions"><button class="btn btn-ghost" id="ccPickCancel" style="width:auto;">ยกเลิก</button></div></div>`;
+    document.body.appendChild(ov);
+    const done = (v) => { ov.remove(); resolve(v); };
+    ov.querySelectorAll(".cc-pick").forEach((b) => b.onclick = () => done(byId(b.dataset.id)));
+    ov.querySelector("#ccPickCancel").onclick = () => done(null);
+  });
+  // เมนูเมื่อกดชื่อ
+  const chipMenu = (x, d, sh) => new Promise((resolve) => {
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.style.zIndex = "120";
+    ov.innerHTML = `<div class="modal-box" style="max-width:380px;"><h3 style="margin-top:0;">${escapeHtml(x.name)}</h3>
+      <p style="margin:0 0 10px;color:var(--ink-soft);">วันที่ ${d} ช่วง${sh + 1} · ${escapeHtml(x.groupName)}</p>
+      <button class="btn btn-primary" data-a="swap" style="margin-bottom:6px;">🔄 สลับกับเวรของคนอื่น</button>
+      <button class="btn btn-ghost" data-a="replace" style="margin-bottom:6px;">👤 เปลี่ยนเป็นคนอื่น (คนอื่นมาอยู่แทน)</button>
+      <button class="btn btn-ghost" data-a="remove" style="margin-bottom:6px;color:#B23B3B;">✕ ตัดออก (ไม่ได้มาอยู่จริง)</button>
+      <div class="modal-actions"><button class="btn btn-ghost" data-a="" style="width:auto;">ยกเลิก</button></div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelectorAll("button[data-a]").forEach((b) => b.onclick = () => { ov.remove(); resolve(b.dataset.a); });
+  });
+  cal.onclick = async (e) => {
+    const add = e.target.closest(".cc-add");
+    if (add) {
+      const d = Number(add.dataset.d), sh = Number(add.dataset.s);
+      const p = await pickPerson(`เพิ่มคนในวันที่ ${d} ช่วง${sh + 1}`, d, sh);
+      if (p) { setOn(p.id, d, sh, true); draw(); }
+      return;
+    }
+    const c = e.target.closest(".cc-chip"); if (!c) return;
+    const x = byId(c.dataset.id), d = Number(c.dataset.d), sh = Number(c.dataset.s), kind = c.dataset.k;
+    if (kind === "removed") {
+      if (swapFrom) return;
+      if (onShift(d, sh).length >= maxPerShift) {
+        const victim = await pickCompVictim(x, d, sh, onShift(d, sh), maxPerShift);
+        if (!victim) return;
+        setOn(victim.id, d, sh, false);
+      }
+      setOn(x.id, d, sh, true); draw(); return;
+    }
+    if (swapFrom) {
+      const a = swapFrom; swapFrom = null;
+      if (a.id === x.id && a.d === d && a.sh === sh) { draw(); return; }
+      if (a.d === d && a.sh === sh) { alert("สองคนนี้อยู่ช่วงเดียวกันอยู่แล้ว สลับกันไม่มีผล"); draw(); return; }
+      if (a.id === x.id) { alert("เป็นคนเดียวกัน สลับกันไม่ได้"); draw(); return; }
+      if (["sched", "added"].includes(stateOf(a.id, d, sh)) || ["sched", "added"].includes(stateOf(x.id, a.d, a.sh))) { alert("สลับไม่ได้ เพราะจะทำให้คนเดียวกันอยู่ช่วงเดียวกันซ้ำ 2 ครั้ง"); draw(); return; }
+      setOn(a.id, a.d, a.sh, false); setOn(x.id, d, sh, false);
+      setOn(a.id, d, sh, true); setOn(x.id, a.d, a.sh, true);
+      draw(); return;
+    }
+    const act = await chipMenu(x, d, sh);
+    if (act === "swap") { swapFrom = { id: x.id, d, sh }; draw(); }
+    else if (act === "remove") { setOn(x.id, d, sh, false); draw(); }
+    else if (act === "replace") {
+      const p = await pickPerson(`ใครมาอยู่แทน ${escapeHtml(nick(x))} (วันที่ ${d} ช่วง${sh + 1})`, d, sh);
+      if (p) { setOn(x.id, d, sh, false); setOn(p.id, d, sh, true); draw(); }
+    }
+  };
+  draw();
+  document.getElementById("ccReset").onclick = () => {
+    if (dirty.size && !confirm("ยกเลิกการแก้ไขทั้งหมดที่ยังไม่บันทึก?")) return;
+    work = cloneCells(snapshot); dirty.clear(); swapFrom = null; draw();
+  };
+  document.getElementById("ccClose").onclick = () => {
+    if (dirty.size && !confirm("มีการแก้ไขที่ยังไม่บันทึก ปิดโดยไม่บันทึกหรือไม่?")) return;
+    closeModal(); renderComp();
+  };
+  document.getElementById("ccSave").onclick = async () => {
+    const btn = document.getElementById("ccSave"); btn.disabled = true;
+    try {
+      for (const id of dirty) await saveCompCells(id, yyyyMm, work[id].adds, work[id].removes);
+      dirty.clear(); closeModal(); renderComp();
+    } catch (e) { alert("บันทึกไม่สำเร็จ: " + friendlyError(e)); btn.disabled = false; }
+  };
+}
+
+// ตารางรวม: แก้ "วันอยู่เวรจริง" ของทุกคนทั้งเดือนในตารางเดียว (หน้าตาเหมือนแบบฟอร์มเบิกค่าตอบแทน)
+async function openCompGridEditor(yyyyMm) {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const numDays = daysInMonth(yyyyMm);
+  if (!allGroups.length) allGroups = await getGroups();
+  const dutyGroups = allGroups.filter(isDutyRosterGroup).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const lists = await Promise.all(dutyGroups.map((g) => getStaffByGroup(g.id)));
+  let staff = lists.flatMap((l, gi) => l.map((x) => ({ ...x, groupName: dutyGroups[gi].name })));
+  if (!staff.length) { alert("ยังไม่มีพนักงานในกลุ่มพนักงานอยู่เวร"); return; }
+  const [{ assignByGroup, cells }, overrides] = await Promise.all([
+    loadCompMonth(yyyyMm, staff.map((x) => x.id)),
+    Promise.all(staff.map((x) => getCompOverride(x.id, yyyyMm))),
+  ]);
+  const ovMap = {}; staff.forEach((x, i) => ovMap[x.id] = overrides[i]);
+  const cloneCells = (c) => Object.fromEntries(Object.entries(c).map(([id, v]) => [id, { adds: new Set(v.adds), removes: new Set(v.removes) }]));
+  const snapshot = cloneCells(cells);
+  let work = cloneCells(cells);
+  const dirty = new Set();
+  // พนักงานที่ลบแล้ว แสดงเฉพาะถ้ายังมีเวรในเดือนนี้
+  staff = staff.filter((x) => !x.deleted || compCountFor(x.id, y, m, numDays, assignByGroup, work) > 0);
+  const maxPerShift = dutyGroups.length || 3;
+  const onShift = (d, sh, exceptId) => staff.filter((x) => x.id !== exceptId && ["sched", "added"].includes(compCellState(x.id, y, m, d, sh, assignByGroup, work)));
+
+  const wrap = document.createElement("div");
+  wrap.className = "modal-overlay"; wrap.id = "calSwapModal";
+  wrap.innerHTML = `<div class="modal-box" style="max-width:none;width:98vw;height:94vh;display:flex;flex-direction:column;padding:14px;">
+    <div class="row-flex" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+      <div>
+        <h3 style="margin:0;">แก้วันอยู่เวรจริง — ทุกคน · ${THAI_MONTHS[m - 1]} ${y + 543}</h3>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin:4px 0 0;">กดช่องเพื่อเพิ่ม/ตัดเวร (ใช้คิดค่าตอบแทนเท่านั้น ไม่เปลี่ยนตารางเวร) ·
+          <b style="background:var(--teal-900);color:#fff;padding:0 5px;border-radius:3px;">X</b> ตามตาราง ·
+          <b style="background:#FDE7C8;color:#92400E;padding:0 5px;border-radius:3px;">X+</b> เพิ่มเอง ·
+          <s style="background:#FBEAEA;color:#B23B3B;padding:0 5px;border-radius:3px;">X</s> ตัดออก · กะละไม่เกิน ${maxPerShift} คน</p>
+      </div>
+      <div class="row-flex" style="gap:6px;width:auto;">
+        <span id="compGridDirty" style="font-size:13px;color:#B45309;align-self:center;"></span>
+        <button class="btn btn-ghost" id="compGridReset" style="width:auto;">ยกเลิกที่แก้</button>
+        <button class="btn btn-ghost" id="compGridClose" style="width:auto;">ปิด</button>
+        <button class="btn btn-primary" id="compGridSave" style="width:auto;">บันทึก</button>
+      </div>
+    </div>
+    <div id="compGrid" style="flex:1;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:6px;"></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const grid = document.getElementById("compGrid");
+  const bandBg = (i) => (i % 2 ? "#EEF1F4" : "#FFFFFF");
+  const thBase = "position:sticky;background:#F5F1E6;border:1px solid #CFC9B8;padding:2px 3px;font-size:12px;z-index:2;";
+  const draw = () => {
+    const sx = grid.scrollLeft, sy = grid.scrollTop;
+    let h = `<table style="border-collapse:separate;border-spacing:0;font-size:12.5px;">
+      <thead><tr><th rowspan="2" style="${thBase}top:0;left:0;z-index:4;min-width:58px;">วันที่</th>`;
+    staff.forEach((x, i) => {
+      h += `<th colspan="3" style="${thBase}top:0;height:44px;background:${i % 2 ? "#D9DEE4" : "#F5F1E6"};border-right:2px solid #555;min-width:96px;line-height:1.25;">${escapeHtml(x.name)}${x.deleted ? ' <span style="color:#B23B3B;">(ลบแล้ว)</span>' : ""}<br><span style="font-weight:400;">${escapeHtml(String(x.empId || ""))}</span></th>`;
+    });
+    h += `</tr><tr>`;
+    staff.forEach((x, i) => { for (let k = 0; k < 3; k++) h += `<th style="${thBase}top:51px;background:${i % 2 ? "#D9DEE4" : "#F5F1E6"};${k === 2 ? "border-right:2px solid #555;" : ""}font-weight:400;">ช่วง${k + 1}</th>`; });
+    h += `</tr></thead><tbody>`;
+    for (let d = 1; d <= numDays; d++) {
+      const dow = new Date(y, m - 1, d).getDay();
+      const hol = !!holidaysMap[todayISO(y, m, d)];
+      const act = compActiveShifts(y, m, d);
+      const rowTint = hol ? "#FFF1C9" : (dow === 0 || dow === 6) ? "#EEF3F8" : "";
+      h += `<tr><td style="position:sticky;left:0;z-index:1;background:${dow === 0 ? "#C62828" : "#0B3D38"};color:#fff;padding:2px 6px;white-space:nowrap;border-bottom:1px solid #fff3;">${d} ${THAI_DOW[dow]}${hol ? " •" : ""}</td>`;
+      staff.forEach((x, i) => {
+        for (let sh = 0; sh < 3; sh++) {
+          const br = sh === 2 ? "border-right:2px solid #555;" : "border-right:1px solid #E2DED2;";
+          const base = `${br}border-bottom:1px solid #E2DED2;text-align:center;padding:2px;min-width:30px;`;
+          if (!act.includes(sh)) { h += `<td style="${base}background:${rowTint || bandBg(i)};color:#C7C2B4;">·</td>`; continue; }
+          const st = compCellState(x.id, y, m, d, sh, assignByGroup, work);
+          let inner = "", cs = "";
+          if (st === "sched") { inner = "X"; cs = "background:var(--teal-900);color:#fff;font-weight:700;"; }
+          else if (st === "added") { inner = "X+"; cs = "background:#FDE7C8;color:#92400E;font-weight:700;outline:1px solid #D97706;"; }
+          else if (st === "removed") { inner = "<s>X</s>"; cs = "background:#FBEAEA;color:#B23B3B;"; }
+          h += `<td data-id="${x.id}" data-d="${d}" data-s="${sh}" style="${base}background:${rowTint || bandBg(i)};cursor:pointer;"><div style="border-radius:4px;min-height:20px;line-height:20px;${cs}">${inner}</div></td>`;
+        }
+      });
+      h += `</tr>`;
+    }
+    // แถวรวม
+    const foot = (label, fn) => `<tr><td style="position:sticky;left:0;z-index:1;background:#F5F1E6;font-weight:700;padding:3px 6px;white-space:nowrap;border-top:2px solid #555;">${label}</td>` +
+      staff.map((x, i) => `<td colspan="3" style="text-align:center;font-weight:600;padding:3px;background:${bandBg(i)};border-top:2px solid #555;border-right:2px solid #555;">${fn(x)}</td>`).join("") + `</tr>`;
+    h += foot("รวมเวร", (x) => {
+      const n = compCountFor(x.id, y, m, numDays, assignByGroup, work);
+      const base = compCountFor(x.id, y, m, numDays, assignByGroup, {});
+      return `${n}${n !== base ? ` <span style="font-weight:400;color:#B45309;font-size:11px;">(ตาราง ${base})</span>` : ""}${ovMap[x.id] != null ? `<br><span style="font-weight:400;color:#B23B3B;font-size:11px;">ใช้คิด ${ovMap[x.id]} (ปรับเอง)</span>` : ""}`;
+    });
+    h += foot("เงิน (บาท)", (x) => {
+      const n = ovMap[x.id] != null ? ovMap[x.id] : compCountFor(x.id, y, m, numDays, assignByGroup, work);
+      return x.salary ? fmtBaht(n * shiftRate(x.salary)) : '<span style="color:#B23B3B;font-weight:400;">ยังไม่กรอกเงินเดือน</span>';
+    });
+    h += `</tbody></table>`;
+    grid.innerHTML = h;
+    grid.scrollLeft = sx; grid.scrollTop = sy;
+    document.getElementById("compGridDirty").textContent = dirty.size ? `แก้ไขแล้ว ${dirty.size} คน (ยังไม่บันทึก)` : "";
+  };
+  grid.onclick = async (e) => {
+    const td = e.target.closest("td[data-s]"); if (!td) return;
+    const id = td.dataset.id, d = Number(td.dataset.d), sh = Number(td.dataset.s), k = `${d}_${sh}`;
+    if (!work[id]) work[id] = { adds: new Set(), removes: new Set() };
+    const me = work[id];
+    const state = compCellState(id, y, m, d, sh, assignByGroup, work);
+    if (state === "sched") me.removes.add(k);
+    else if (state === "added") me.adds.delete(k);
+    else {
+      const others = onShift(d, sh, id);
+      if (others.length >= maxPerShift) {
+        const victim = await pickCompVictim(staff.find((x) => x.id === id), d, sh, others, maxPerShift);
+        if (!victim) return;
+        if (!work[victim.id]) work[victim.id] = { adds: new Set(), removes: new Set() };
+        if (compCellState(victim.id, y, m, d, sh, assignByGroup, work) === "sched") work[victim.id].removes.add(k); else work[victim.id].adds.delete(k);
+        dirty.add(victim.id);
+      }
+      if (state === "removed") me.removes.delete(k); else me.adds.add(k);
+    }
+    dirty.add(id);
+    draw();
+  };
+  draw();
+  document.getElementById("compGridReset").onclick = () => {
+    if (dirty.size && !confirm("ยกเลิกการแก้ไขทั้งหมดที่ยังไม่บันทึก?")) return;
+    work = cloneCells(snapshot); dirty.clear(); draw();
+  };
+  document.getElementById("compGridClose").onclick = () => {
+    if (dirty.size && !confirm("มีการแก้ไขที่ยังไม่บันทึก ปิดโดยไม่บันทึกหรือไม่?")) return;
+    closeModal(); renderComp();
+  };
+  document.getElementById("compGridSave").onclick = async () => {
+    const btn = document.getElementById("compGridSave"); btn.disabled = true;
+    try {
+      for (const id of dirty) await saveCompCells(id, yyyyMm, work[id].adds, work[id].removes);
+      dirty.clear(); closeModal(); renderComp();
+    } catch (e) { alert("บันทึกไม่สำเร็จ: " + friendlyError(e)); btn.disabled = false; }
+  };
+}
+
 // หน้าต่างแก้ "วันอยู่เวรจริง" ของพนักงาน 1 คน (ผู้คิดค่าตอบแทน/แอดมิน)
 async function openCompCellsModal(st, yyyyMm) {
   const [y, m] = yyyyMm.split("-").map(Number);
@@ -3198,7 +3531,7 @@ async function openCompCellsModal(st, yyyyMm) {
         // ถ้าเต็มแล้ว ต้องเลือกว่าจะตัดใครออก 1 คน (ล็อกไว้ ไม่ให้เกิน)
         const others = othersOn(d, sh);
         if (others.length >= maxPerShift) {
-          const victim = await pickCompVictim(d, sh, others);
+          const victim = await pickCompVictim(st, d, sh, others, maxPerShift);
           if (!victim) return;
           const vs = compCellState(victim.id, y, m, d, sh, assignByGroup, work);
           if (!work[victim.id]) work[victim.id] = { adds: new Set(), removes: new Set() };
@@ -3211,21 +3544,6 @@ async function openCompCellsModal(st, yyyyMm) {
       };
     });
   };
-  // เลือกคนที่จะตัดออกจากกะที่เต็มแล้ว (คืนค่า staff หรือ null ถ้ายกเลิก)
-  const pickCompVictim = (d, sh, others) => new Promise((resolve) => {
-    const ov = document.createElement("div");
-    ov.className = "modal-overlay"; ov.id = "compPickModal"; ov.style.zIndex = "110";
-    ov.innerHTML = `<div class="modal-box" style="max-width:420px;">
-      <h3 style="margin-top:0;">⚠️ กะนี้ครบ ${maxPerShift} คนแล้ว</h3>
-      <p style="margin:0 0 10px;">วันที่ ${d} ช่วง${sh + 1} มีผู้ปฏิบัติงานครบ ${maxPerShift} คนแล้ว ถ้าจะให้ <b>${escapeHtml(staffDisplayName(st))}</b> อยู่กะนี้ ต้องเลือกตัดออก 1 คน:</p>
-      ${others.map((x) => `<button class="btn btn-ghost comp-victim" data-id="${x.id}" style="display:block;width:100%;margin-bottom:6px;text-align:left;">ตัด ${escapeHtml(staffDisplayName(x))} <span style="color:var(--ink-soft);font-size:12px;">· ${escapeHtml(x.groupName || "")}</span></button>`).join("")}
-      <div class="modal-actions"><button class="btn btn-ghost" id="compPickCancel" style="width:auto;">ยกเลิก</button></div>
-    </div>`;
-    document.body.appendChild(ov);
-    const done = (v) => { ov.remove(); resolve(v); };
-    ov.querySelectorAll(".comp-victim").forEach((bt) => bt.onclick = () => done(others.find((x) => x.id === bt.dataset.id)));
-    document.getElementById("compPickCancel").onclick = () => done(null);
-  });
   draw();
   document.getElementById("compCellsReset").onclick = () => {
     // คืนทุกคนกลับเป็นตามที่บันทึกไว้ แล้วล้างการแก้ไขของคนนี้ทั้งหมด (กลับเป็นตามตาราง)
@@ -3373,6 +3691,8 @@ async function buildAndPrintCompForm() {
   setTimeout(() => window.print(), 50);
 }
 document.getElementById("printCompBtn").onclick = buildAndPrintCompForm;
+document.getElementById("compCalBtn").onclick = () => openCompCalendarEditor(document.getElementById("compMonthInput").value || currentYyyyMm());
+document.getElementById("compGridBtn").onclick = () => openCompGridEditor(document.getElementById("compMonthInput").value || currentYyyyMm());
 
 // สร้าง 1 แผ่นต่อตำแหน่ง (พชง. / ชชง.) พร้อมช่องลงนามในแต่ละแผ่น
 function buildCompPrintPage(posLabel, staffList, overrideMap, assignByGroup, compCells, y, m, buddhistYear, monthName, numDays, s, printDateThai) {
