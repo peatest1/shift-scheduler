@@ -233,11 +233,11 @@ select.cell-select{font-family:inherit;font-size:12px;border:1px solid var(--lin
 }
 .print-page,.print-page *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
 .pf-header{display:block;margin-bottom:4px;}
-.pf-header-logo{height:22mm;width:auto;display:block;}
+.pf-header-logo{height:19mm;width:auto;display:block;}
 .pf-logo{width:38px;height:38px;flex:none;}
 .pf-org-th{font-size:13px;font-weight:700;margin:0;}
 .pf-org-en{font-size:8.5px;margin:0;letter-spacing:.5px;}
-.pf-meta-table{width:100%;font-size:11.5px;margin:2px 0 4px;border-collapse:collapse;}
+.pf-meta-table{width:100%;font-size:10.5px;margin:2px 0 4px;border-collapse:collapse;}
 .pf-meta-table td{border:none;padding:0px 4px;text-align:left;vertical-align:top;line-height:1.35;}
 .pf-meta-label{width:52px;font-weight:600;white-space:nowrap;}
 .pf-title{text-align:center;font-weight:400;font-size:11px;margin:3px 0 4px;}
@@ -278,7 +278,7 @@ body.printing-form #printFormArea{display:block;}
   .sched-scroll{max-height:none;overflow:visible;}
   .sched-table .sticky-col{position:static;}
   table{font-size:11px;}
-  @page{size:A4 landscape;margin:8mm;}
+  @page{size:A4 landscape;margin:6mm 8mm;}
   @page dispatch{size:A4 portrait;margin:8mm;}
   .print-page.dispatch{page:dispatch;}
   .print-page{page-break-after:always;width:100%;min-height:0;padding:0;margin:0;}
@@ -3000,7 +3000,7 @@ function buildOnePrintPage(group, staffList, assignments, y, m, buddhistYear, mo
   }
 
   let totalRow = `<tr class="pf-total-row"><td colspan="2" class="pf-pend">รวม</td>`;
-  let grandRow = `<tr class="pf-total-row"><td colspan="2" class="pf-pend"></td>`;
+  let grandRow = `<tr class="pf-total-row"><td colspan="2" class="pf-pend">รวมทั้งเดือน</td>`;
   staffList.forEach((st, i) => {
     const t = totals[st.id];
     totalRow += `<td${pfCls(i, 0)}>${t[0]}</td><td${pfCls(i, 1)}>${t[1]}</td><td${pfCls(i, 2)}>${t[2]}</td>`;
@@ -3229,12 +3229,15 @@ async function openCompCalendarEditor(yyyyMm) {
         <div style="text-align:center;font-weight:800;padding:2px;background:${hol ? "var(--amber-500)" : dow === 0 ? "#F6D5D5" : dow === 6 ? "#D9E6F2" : "#EFEAE0"};${hol ? "color:#fff;" : ""}" ${hol ? `title="${escapeHtml(hol)}"` : ""}>${d}</div>`;
       for (let sh = 0; sh < 3; sh++) {
         if (!compActiveShifts(y, m, d).includes(sh)) { h += `<div style="text-align:center;color:#B7B0A0;font-size:12px;border-top:1px dashed #D8D2C4;padding:2px;">-</div>`; continue; }
+        // คนที่อยู่จริง (ไม่ถูกขีด) เรียงไว้หน้า ตามลำดับชุด — คนที่ถูกขีดออกไปไว้บรรทัดหลัง จะได้ดูง่าย
         const people = staff.map((x) => ({ x, st: stateOf(x.id, d, sh) })).filter((p) => p.st).sort((a, b) => a.x.gOrder - b.x.gOrder);
-        const working = people.filter((p) => p.st !== "removed").length;
+        const on = people.filter((p) => p.st !== "removed"), off = people.filter((p) => p.st === "removed");
+        const working = on.length;
         h += `<div style="border-top:1px dashed #D8D2C4;padding:2px;text-align:center;line-height:1.5;">
           <span style="font-size:10px;color:#8A8378;">ช่วง${sh + 1}</span><br>` +
-          people.map((p) => chip(p.x, d, sh, p.st)).join("") +
+          on.map((p) => chip(p.x, d, sh, p.st)).join("") +
           (working < maxPerShift ? `<button class="cc-add" data-d="${d}" data-s="${sh}" title="เพิ่มคนในช่วงนี้" style="border:1px dashed #1F6F66;color:#1F6F66;background:#fff;border-radius:10px;padding:0 7px;margin:1px;cursor:pointer;font-family:inherit;">＋</button>` : "") +
+          (off.length ? `<div style="opacity:.75;font-size:11px;">${off.map((p) => chip(p.x, d, sh, p.st)).join("")}</div>` : "") +
           `</div>`;
       }
       h += `</td>`;
@@ -3740,6 +3743,7 @@ function buildCompPrintPage(posLabel, staffList, overrideMap, assignByGroup, com
   }
 
   let totalRow = `<tr class="pf-total-row"><td colspan="2" class="pf-pend">รวมเวร</td>`;
+  let monthRow = `<tr class="pf-total-row"><td colspan="2" class="pf-pend">รวมเวรทั้งเดือน</td>`;
   let grandRow = `<tr class="pf-total-row"><td colspan="2" class="pf-pend">รวมเงิน (บาท)</td>`;
   let pageSum = 0;
   staffList.forEach((st, i) => {
@@ -3750,12 +3754,18 @@ function buildCompPrintPage(posLabel, staffList, overrideMap, assignByGroup, com
     const amount = used * shiftRate(st.salary);
     pageSum += amount;
     totalRow += `<td${pfCls(i, 0)}>${t[0]}</td><td${pfCls(i, 1)}>${t[1]}</td><td${pfCls(i, 2)}>${t[2]}</td>`;
-    grandRow += `<td colspan="3"${pfCls(i, null)}>${fmtBaht(amount)}${ov != null ? ` (ปรับเป็น ${ov} เวร)` : ""}</td>`;
+    monthRow += `<td colspan="3"${pfCls(i, null)} style="font-weight:700;">${used}${ov != null ? ` <span style="font-weight:400;">(ปรับจาก ${auto})</span>` : ""}</td>`;
+    grandRow += `<td colspan="3"${pfCls(i, null)}>${fmtBaht(amount)}</td>`;
   });
-  totalRow += "</tr>"; grandRow += "</tr>";
+  totalRow += "</tr>"; monthRow += "</tr>"; grandRow += "</tr>";
   // ยอดรวมเงินของแผ่นนี้ — ห้อยไว้ใต้คอลัมน์คนสุดท้าย
   const lead = 2 + 3 * (staffList.length - 1);
-  const sumRow = `<tr class="pf-sum-row"><td colspan="${lead}" style="border:none;background:transparent;text-align:right;padding:4px 8px 0 0;font-weight:700;">รวมเงินทั้งสิ้น (บาท)</td>` +
+  // บรรทัดเวลาช่วงเวร ย้ายมาอยู่แถวเดียวกับยอดรวม (ด้านซ้าย) เพื่อเหลือที่ว่างให้ช่องลงนาม
+  const sumRow = `<tr class="pf-sum-row"><td colspan="${lead}" style="border:none;background:transparent;padding:4px 8px 0 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <span style="font-size:11px;font-weight:400;text-align:left;white-space:nowrap;">ช่วง 1 (8 ชม.) เวลา 00.30-08.30 น. &nbsp;&nbsp; ช่วง 2 (8 ชม.) เวลา 08.30-16.30 น. &nbsp;&nbsp; ช่วง 3 (8 ชม.) เวลา 16.30-00.30 น.</span>
+        <b style="white-space:nowrap;">รวมเงินทั้งสิ้น (บาท)</b>
+      </div></td>` +
     `<td colspan="3" style="border:2px solid #000;background:#FFF3A8;font-weight:700;padding:3px 2px;">${fmtBaht(pageSum)}</td></tr>`;
 
   return `
@@ -3769,22 +3779,17 @@ function buildCompPrintPage(posLabel, staffList, overrideMap, assignByGroup, com
       <tr><td></td><td colspan="3">${s.body} ของ ${s.officeLine || ""} ประจำเดือน ${monthName} พ.ศ.${buddhistYear} ดังนี้</td></tr>
     </table>
     <table class="official-table">
-      ${nameRow}${empIdRow}${subHeadRow}${bodyRows}${totalRow}${grandRow}${sumRow}
+      ${nameRow}${empIdRow}${subHeadRow}${bodyRows}${totalRow}${monthRow}${grandRow}${sumRow}
     </table>
-    <div style="font-size:11px;margin-top:6px;display:flex;gap:18px;flex-wrap:wrap;">
-      <span>ช่วง 1 (8 ชม.) เวลา 00.30-08.30 น.</span>
-      <span>ช่วง 2 (8 ชม.) เวลา 08.30-16.30 น.</span>
-      <span>ช่วง 3 (8 ชม.) เวลา 16.30-00.30 น.</span>
-    </div>
     <div class="pf-footer">
       <div class="pf-col">
-        <div class="pf-sign-space"></div>
+        <div class="pf-sign-space" style="height:15mm;"></div>
         <div>${escapeHtml(s.signerName || "")}</div>
         <div>${escapeHtml(s.signerTitle || "")}</div>
         <div>ผู้ขออนุมัติ</div>
       </div>
       <div class="pf-col">
-        <div class="pf-sign-space"></div>
+        <div class="pf-sign-space" style="height:15mm;"></div>
         <div>${escapeHtml(s.managerName || "")}</div>
         <div>${escapeHtml(s.managerTitle || "")}</div>
         <div>ผู้อนุมัติ</div>
