@@ -3213,38 +3213,42 @@ async function openCompCalendarEditor(yyyyMm) {
       : kind === "removed" ? "background:transparent;color:#B23B3B;border:1px dashed #E8B4B4;text-decoration:line-through;"
       : "background:#fff;color:#0C1210;border:1px solid #CFC9B8;";
     return `<button class="cc-chip" data-id="${x.id}" data-d="${d}" data-s="${sh}" data-k="${kind}" title="${escapeHtml(x.name)} · ${escapeHtml(x.groupName)}"
-      style="${style}${sel ? "outline:3px solid #2563EB;" : ""}border-radius:10px;padding:1px 7px;margin:1px;font-size:13px;font-family:inherit;cursor:pointer;">${escapeHtml(nick(x))}</button>`;
+      style="${style}${sel ? "outline:3px solid #2563EB;" : ""}border-radius:10px;padding:0 6px;margin:1px;font-size:15.5px;line-height:1.45;font-family:inherit;cursor:pointer;">${escapeHtml(nick(x))}</button>`;
   };
   const draw = () => {
     const sy = cal.scrollTop;
+    // แต่ละสัปดาห์ = 1 แถววันที่ + 3 แถว (ช่วง1/2/3) — ทุกช่องในแถวเดียวกันสูงเท่ากัน เส้นแบ่งช่วงจึงตรงแนวกันตลอดเดือน
     const first = new Date(y, m - 1, 1).getDay();
-    let h = `<table style="width:100%;border-collapse:collapse;table-layout:fixed;"><thead><tr>` +
-      ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map((n, i) => `<th style="background:#0B3D38;color:#fff;padding:4px;${i === 0 ? "background:#C62828;" : ""}">${n}</th>`).join("") + `</tr></thead><tbody><tr>`;
-    for (let i = 0; i < first; i++) h += `<td style="border:1px solid var(--line);background:#FAF8F3;"></td>`;
-    for (let d = 1; d <= numDays; d++) {
-      const dow = new Date(y, m - 1, d).getDay();
-      const hol = holidaysMap[todayISO(y, m, d)];
-      if (dow === 0 && d !== 1) h += `</tr><tr>`;
-      h += `<td style="border:1px solid var(--line);vertical-align:top;padding:0;">
-        <div style="text-align:center;font-weight:800;padding:2px;background:${hol ? "var(--amber-500)" : dow === 0 ? "#F6D5D5" : dow === 6 ? "#D9E6F2" : "#EFEAE0"};${hol ? "color:#fff;" : ""}" ${hol ? `title="${escapeHtml(hol)}"` : ""}>${d}</div>`;
+    const weeks = [];
+    let wk = Array(first).fill(null);
+    for (let d = 1; d <= numDays; d++) { wk.push(d); if (wk.length === 7) { weeks.push(wk); wk = []; } }
+    if (wk.length) { while (wk.length < 7) wk.push(null); weeks.push(wk); }
+    const SHIFT_H = 56; // ความสูงขั้นต่ำของแถวช่วง (พอสำหรับ 3 ชื่อ + บรรทัดคนที่ถูกขีด)
+    const lblTd = (txt, extra) => `<td style="background:#0B3D38;color:#fff;font-size:11px;text-align:center;padding:2px;${extra || ""}">${txt}</td>`;
+    let h = `<table style="width:100%;border-collapse:collapse;table-layout:fixed;"><colgroup><col style="width:46px;">${"<col>".repeat(7)}</colgroup><thead><tr><th style="background:#0B3D38;"></th>` +
+      ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map((n, i) => `<th style="background:#0B3D38;color:#fff;padding:4px;${i === 0 ? "background:#C62828;" : ""}">${n}</th>`).join("") + `</tr></thead><tbody>`;
+    weeks.forEach((days) => {
+      h += `<tr>${lblTd("", "border-top:2px solid #0B3D38;")}` + days.map((d) => {
+        if (!d) return `<td style="background:#FAF8F3;border-left:1px solid var(--line);border-top:2px solid #0B3D38;"></td>`;
+        const dow = new Date(y, m - 1, d).getDay();
+        const hol = holidaysMap[todayISO(y, m, d)];
+        return `<td style="text-align:center;font-weight:800;padding:2px;border-left:1px solid var(--line);border-top:2px solid #0B3D38;background:${hol ? "var(--amber-500)" : dow === 0 ? "#F6D5D5" : dow === 6 ? "#D9E6F2" : "#EFEAE0"};${hol ? "color:#fff;" : ""}" ${hol ? `title="${escapeHtml(hol)}"` : ""}>${d}</td>`;
+      }).join("") + `</tr>`;
       for (let sh = 0; sh < 3; sh++) {
-        if (!compActiveShifts(y, m, d).includes(sh)) { h += `<div style="text-align:center;color:#B7B0A0;font-size:12px;border-top:1px dashed #D8D2C4;padding:2px;">-</div>`; continue; }
-        // คนที่อยู่จริง (ไม่ถูกขีด) เรียงไว้หน้า ตามลำดับชุด — คนที่ถูกขีดออกไปไว้บรรทัดหลัง จะได้ดูง่าย
-        const people = staff.map((x) => ({ x, st: stateOf(x.id, d, sh) })).filter((p) => p.st).sort((a, b) => a.x.gOrder - b.x.gOrder);
-        const on = people.filter((p) => p.st !== "removed"), off = people.filter((p) => p.st === "removed");
-        const working = on.length;
-        h += `<div style="border-top:1px dashed #D8D2C4;padding:2px;text-align:center;line-height:1.5;">
-          <span style="font-size:10px;color:#8A8378;">ช่วง${sh + 1}</span><br>` +
-          on.map((p) => chip(p.x, d, sh, p.st)).join("") +
-          (working < maxPerShift ? `<button class="cc-add" data-d="${d}" data-s="${sh}" title="เพิ่มคนในช่วงนี้" style="border:1px dashed #1F6F66;color:#1F6F66;background:#fff;border-radius:10px;padding:0 7px;margin:1px;cursor:pointer;font-family:inherit;">＋</button>` : "") +
-          (off.length ? `<div style="opacity:.75;font-size:11px;">${off.map((p) => chip(p.x, d, sh, p.st)).join("")}</div>` : "") +
-          `</div>`;
+        h += `<tr>${lblTd(`ช่วง${sh + 1}`, `height:${SHIFT_H}px;border-top:1px dashed #3C6B65;`)}` + days.map((d) => {
+          const base = `height:${SHIFT_H}px;vertical-align:top;text-align:center;padding:6px 2px 2px;line-height:1.5;border-left:1px solid var(--line);border-top:1px dashed #D8D2C4;`;
+          if (!d) return `<td style="${base}background:#FAF8F3;"></td>`;
+          if (!compActiveShifts(y, m, d).includes(sh)) return `<td style="${base}color:#B7B0A0;background:#FAF8F3;">-</td>`;
+          // คนที่อยู่จริง (ไม่ถูกขีด) เรียงไว้หน้า ตามลำดับชุด — คนที่ถูกขีดออกไปไว้บรรทัดล่าง จะได้ดูง่าย
+          const people = staff.map((x) => ({ x, st: stateOf(x.id, d, sh) })).filter((p) => p.st).sort((a, b) => a.x.gOrder - b.x.gOrder);
+          const on = people.filter((p) => p.st !== "removed"), off = people.filter((p) => p.st === "removed");
+          return `<td style="${base}"><div>` + on.map((p) => chip(p.x, d, sh, p.st)).join("") +
+            (on.length < maxPerShift ? `<button class="cc-add" data-d="${d}" data-s="${sh}" title="เพิ่มคนในช่วงนี้" style="border:1px dashed #1F6F66;color:#1F6F66;background:#fff;border-radius:10px;padding:0 7px;margin:1px;cursor:pointer;font-family:inherit;">＋</button>` : "") +
+            `</div>` + (off.length ? `<div style="opacity:.8;font-size:13px;line-height:1.2;">${off.map((p) => chip(p.x, d, sh, p.st)).join("")}</div>` : "") + `</td>`;
+        }).join("") + `</tr>`;
       }
-      h += `</td>`;
-    }
-    const tail = (first + numDays) % 7;
-    if (tail) for (let i = tail; i < 7; i++) h += `<td style="border:1px solid var(--line);background:#FAF8F3;"></td>`;
-    h += `</tr></tbody></table>`;
+    });
+    h += `</tbody></table>`;
     cal.innerHTML = h; cal.scrollTop = sy;
     document.getElementById("ccDirty").textContent = dirty.size ? `แก้ไขแล้ว ${dirty.size} คน (ยังไม่บันทึก)` : "";
     const bar = document.getElementById("ccSwapBar");
